@@ -35,11 +35,13 @@ are highlighted.
 ![F1 card, last race classification, driver standings](docs/images/f1.png)
 
 **NHL.** Next game on an ice-sheet matchup with records and streaks, the playoff picture under
-the team name, and the last game as a scoreboard. Click the scoreboard for shots on goal, every
-goal by period (scorer, assists, PP/SH/EN, running score), the shootout and the three stars.
-During a game the matchup turns into a live score with period and clock, updated every minute.
+the team name, and the last game as a scoreboard. Click the division rank (e.g. "Pacific #5") for
+the division standings and the conference wild-card race, with a red line under the last playoff
+spot. Click the scoreboard for shots on goal, every goal by period (scorer, assists, PP/SH/EN,
+running score), the shootout and the three stars. During a game the matchup turns into a live
+score with period and clock, updated every minute.
 
-![NHL card and game detail](docs/images/nhl.png)
+![NHL card, standings, game detail](docs/images/nhl.png)
 
 **Badminton** (shown in Chinese). Court-green card: world ranking with weekly change, the next
 tournament with the draw path as a timeline — click "等N队" to list every possible opponent with
