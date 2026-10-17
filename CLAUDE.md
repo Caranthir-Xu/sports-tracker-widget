@@ -47,10 +47,17 @@ runs from a runtime copy:
 - Testing without a phone: run the module under Node with shims for `Request`/`FileManager`/
   `Timer` (route BWF through curl_cffi, since Node is blocked) and compare with Python's
   data.json; widget layouts can be mocked by rendering the ListWidget tree to HTML.
-- Large widget = three full-bleed colour bands. Scriptable can't read a widget's size, so
-  `largeSize()` maps `Device.screenSize()` to Apple's widget sizes (402×874 → 364×382, verified
-  on the user's phone); band width is 0 (stretch), heights split by `share`; a vertical backdrop
-  in the edge colours hides rounding gaps. Keep `compact` mode lean — content is tight.
+- F1 on iOS mirrors the desktop racing style. Widgets can't slant text, so they use
+  `raceFont()` (HelveticaNeue-CondensedBlack) upright, and draw the slanted number plate
+  (`plateImage`) and start lights (`lightsImage`) with DrawContext. The detail page (HTML) uses the same CSS as the
+  desktop, including the timing-tower tables toggled by tapping LAST RACE / STANDINGS (`tbl()`).
+  `Sports Data.js` has `f1Sport()` (= Python `fetch_sport`) for `tables` + `next_round`.
+- Large widget = three full-bleed colour bands; medium F1 has the chequered strip. Bands, the
+  left→right gradients and the chequered strip are painted into ONE `backgroundImage`
+  (`bandsBackground`), which iOS stretches to the real widget size — never use fixed-width
+  images/stacks: `largeSize()` (screen-size table, fallback ≈ 0.86×/0.9× screen width) did not
+  match the user's phone exactly. Content stacks are transparent, width 0 (stretch), heights
+  split by `share`. Gradient strips are opaque (alpha pre-mixed) so their overlaps don't seam.
 - Widget memory is tight: no large images (flags are emoji via `flag()`, NHL logos via ESPN's
   96 px resizer), the BWF top-500 rank map is cached daily, and `load()` uses a 90 s lock so
   only one widget fetches at a time. Widget errors render as text instead of a blank widget.

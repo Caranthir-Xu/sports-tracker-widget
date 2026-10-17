@@ -235,6 +235,42 @@ async function f1Subject(subj) {
   return { ranking, next, last, profile };
 }
 
+// Sport-level tables shared by all drivers: last race classification, driver standings.
+async function f1Sport(sportCfg) {
+  const followed = new Set(sportCfg.subjects.map((s) => s.jolpica_id));
+  const [drivers, raceData, standData, nextData] = await Promise.all([
+    getJSON(`${OPENF1}/drivers?session_key=latest`), getJSON(`${JOLPICA}/current/last/results.json`),
+    getJSON(`${JOLPICA}/current/driverStandings.json`), getJSON(`${JOLPICA}/current/next.json`),
+  ]);
+  const colours = {};
+  drivers.forEach((d) => { if (d.team_colour) colours[d.name_acronym] = `#${d.team_colour}`; });
+  const row = (pos, d, team, value, extra) => ({
+    pos, code: d.code, name: `${d.givenName} ${d.familyName}`, team, color: colours[d.code] || null,
+    value, extra, self: followed.has(d.driverId),
+  });
+  const race = raceData.MRData.RaceTable.Races[0];
+  const leadLaps = +race.Results[0].laps;
+  // Lapped cars' times are measured a lap down, so show laps like the official classification.
+  const gap = (r) => {
+    if (r.status === "Finished") return r.Time.time;
+    const down = leadLaps - +r.laps;
+    if (r.status === "Lapped" || r.status.startsWith("+")) return `+${down} Lap${down > 1 ? "s" : ""}`;
+    return r.status === "Retired" ? "DNF" : r.status;
+  };
+  const lists = standData.MRData.StandingsTable.StandingsLists;
+  const nextRace = nextData.MRData.RaceTable.Races[0];
+  return {
+    next_round: nextRace ? +nextRace.round : null,
+    tables: {
+      last_race: { title: race.raceName, subtitle: `Round ${race.round} · ${race.date}`,
+        rows: race.Results.map((r) => row(+r.position, r.Driver, r.Constructor.name, gap(r), +r.points ? `+${r.points}` : "")) },
+      standings: { title: "Driver standings", subtitle: lists.length ? `After round ${lists[0].round}` : null,
+        rows: (lists.length ? lists[0].DriverStandings : []).map((d) =>
+          row(+d.position, d.Driver, d.Constructors[d.Constructors.length - 1].name, String(+d.points), +d.wins ? `${d.wins}W` : "")) },
+    },
+  };
+}
+
 // =====================================================================
 // NHL — api-web.nhle.com (unofficial)
 // =====================================================================
@@ -538,16 +574,28 @@ async function badmintonSubject(subj) {
 // =====================================================================
 
 const PROVIDERS = { f1: f1Subject, nhl: nhlSubject, badminton: badmintonSubject };
+const SPORT_PROVIDERS = { f1: f1Sport }; // optional sport-level data, like fetch_sport() in Python
 const PROFILE_KEYS = ["team", "color", "image", "badge", "country"];
 
 function withTimeout(p, ms) {
   return Promise.race([p, new Promise((_, rej) => Timer.schedule(ms, false, () => rej(new Error(`timeout ${ms} ms`))))]);
 }
 
+// Sport-level data with last-good fallback (marked tables_stale).
+async function sportExtras(sport, old, config) {
+  const fn = SPORT_PROVIDERS[sport.provider];
+  if (!fn) return {};
+  try {
+    return Object.assign(await withTimeout(fn(sport), config.timeoutMs || 25000), { tables_stale: false });
+  } catch (e) {
+    return old && old.tables ? { tables: old.tables, next_round: old.next_round, tables_stale: true } : {};
+  }
+}
+
 async function fetchAll(config, previous) {
-  const prev = {};
-  ((previous || {}).sports || []).forEach((sp) => sp.subjects.forEach((s) => { prev[s.id] = s; }));
-  const sports = await Promise.all(config.sports.map(async (sport) => ({
+  const prev = {}, prevSports = {};
+  ((previous || {}).sports || []).forEach((sp) => { prevSports[sp.id] = sp; sp.subjects.forEach((s) => { prev[s.id] = s; }); });
+  const sports = await Promise.all(config.sports.map(async (sport) => Object.assign({
     id: sport.id, name: sport.name,
     subjects: await Promise.all(sport.subjects.map(async (cfg) => {
       const base = { id: cfg.id, name: cfg.name, short: cfg.short || null };
@@ -565,7 +613,7 @@ async function fetchAll(config, previous) {
         });
       }
     })),
-  })));
+  }, await sportExtras(sport, prevSports[sport.id], config))));
   return { schema_version: 1, generated_at: iso(now()), timezone: config.timezone || "UTC", sports };
 }
 

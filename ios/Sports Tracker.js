@@ -172,9 +172,12 @@ async function image(url) {
 }
 
 // ---------- widget building blocks ----------
+// F1 racing type: condensed black, like F1 TV graphics (widgets can't slant text).
+const raceFont = (size) => new Font("HelveticaNeue-CondensedBlack", size);
+const F1_RED = "#ff2a1f";
 function txt(stack, s, size, color, weight) {
   const t = stack.addText(String(s == null ? "" : s));
-  t.font = weight === "heavy" ? Font.heavySystemFont(size) : weight === "bold" ? Font.boldSystemFont(size)
+  t.font = weight === "race" ? raceFont(size) : weight === "heavy" ? Font.heavySystemFont(size) : weight === "bold" ? Font.boldSystemFont(size)
     : weight === "semi" ? Font.semiboldSystemFont(size) : weight === "round" ? Font.boldRoundedSystemFont(size)
     : Font.systemFont(size);
   t.textColor = color || C.text;
@@ -239,6 +242,94 @@ function trackImage(track, w) {
   return ctx.getImage();
 }
 
+// Car number on a slanted team-colour plate.
+function plateImage(number, color, h) {
+  const w = Math.round(h * 1.35), sk = Math.round(h * 0.22);
+  const ctx = new DrawContext();
+  ctx.size = new Size(w, h);
+  ctx.opaque = false;
+  ctx.respectScreenScale = true;
+  const p = new Path();
+  p.move(new Point(sk, 0)); p.addLine(new Point(w, 0)); p.addLine(new Point(w - sk, h)); p.addLine(new Point(0, h)); p.closeSubpath();
+  ctx.addPath(p);
+  ctx.setFillColor(new Color(color || "#888888"));
+  ctx.fillPath();
+  ctx.setFont(raceFont(h * 0.72));
+  ctx.setTextColor(Color.white());
+  ctx.setTextAlignedCenter();
+  ctx.drawTextInRect(String(number || ""), new Rect(0, h * 0.08, w, h));
+  return ctx.getImage();
+}
+
+// Five start lights: one more lit per day as the session nears; all off once live.
+function lightsImage(ev) {
+  const days = Math.floor((Date.parse(ev.start) - Date.now()) / DAY);
+  const lit = ev.status === "live" ? 0 : Math.max(0, Math.min(5, 5 - days));
+  const d = 6, gap = 3, pad = 3, w = pad * 2 + d * 5 + gap * 4, h = d + pad * 2;
+  const ctx = new DrawContext();
+  ctx.size = new Size(w, h);
+  ctx.opaque = false;
+  ctx.respectScreenScale = true;
+  const bg = new Path();
+  bg.addRoundedRect(new Rect(0, 0, w, h), 3, 3);
+  ctx.addPath(bg);
+  ctx.setFillColor(new Color("#0b0b0d"));
+  ctx.fillPath();
+  for (let i = 0; i < 5; i++) {
+    ctx.setFillColor(new Color(i < lit ? F1_RED : "#7a2c2c"));
+    ctx.fillEllipse(new Rect(pad + i * (d + gap), pad, d, d));
+  }
+  return ctx.getImage();
+}
+
+// Widget background painted as one image: horizontal colour bands (left→right gradient each),
+// optionally with a chequered strip on top. iOS stretches a background image to the real widget
+// size, so nothing depends on knowing the exact widget width.
+function bandsBackground(size, bands) {
+  const ctx = new DrawContext();
+  ctx.size = size;
+  ctx.opaque = true;
+  ctx.respectScreenScale = true;
+  ctx.setFillColor(new Color("#14141a"));
+  ctx.fillRect(new Rect(0, 0, size.width, size.height));
+  const mix = (a, b, t) => {
+    const p = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+    const [x, y] = [p(a), p(b)];
+    return "#" + x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, "0")).join("");
+  };
+  let y = 0;
+  const strips = 48;
+  for (const band of bands) {
+    const h = Math.round(size.height * band.share);
+    for (let i = 0; i < strips; i++) {
+      // Opaque strips (alpha pre-mixed over the base) so the 1 px overlaps don't show as seams.
+      const c = mix(band.colors[0], band.colors[1], i / (strips - 1));
+      ctx.setFillColor(new Color(mix("#14141a", c, band.alpha || 1)));
+      ctx.fillRect(new Rect((size.width * i) / strips, y, size.width / strips + 1, h));
+    }
+    if (band.checker) {
+      const sq = 3;
+      for (let x = 0; x < size.width; x += sq) {
+        for (let r = 0; r < 2; r++) {
+          ctx.setFillColor(new Color(((x / sq + r) % 2) ? "#111111" : "#ffffff", 0.6));
+          ctx.fillRect(new Rect(x, y + r * sq, sq, sq));
+        }
+      }
+    }
+    y += h;
+  }
+  return ctx.getImage();
+}
+
+const BAND_COLORS = (sport) => sport.id === "f1" ? f1Colors(sport)
+  : sport.subjects.length === 1 && sport.subjects[0].color ? [sport.subjects[0].color, "#0c2a2e"] : ["#2a2d35", "#1a1c21"];
+
+function addImage(stack, image) {
+  const wi = stack.addImage(image);
+  wi.imageSize = image.size;
+  return wi;
+}
+
 // ---------- F1 ----------
 function f1Colors(sport) {
   return [(sport.subjects[0] || {}).color || "#ED1131", (sport.subjects[1] || {}).color || "#4781D7"];
@@ -247,43 +338,44 @@ function f1Colors(sport) {
 async function f1Block(parent, sport, opts) {
   const ev = (sport.subjects.find((s) => s.next) || {}).next;
   const top = hstack(parent, 6);
-  const left = vstack(top, 1);
-  const lbl = hstack(left, 4);
-  txt(lbl, "FORMULA 1", 9, C.dim, "bold");
+  const left = vstack(top, 2);
+  const lbl = hstack(left, 5);
+  txt(lbl, "F1", 13, new Color(F1_RED), "race");
+  if (sport.next_round) pill(lbl, `ROUND ${sport.next_round}`, new Color("#ffffff", 0.16));
   if (ev && ev.status === "live") pill(lbl, "LIVE", C.live);
   if (ev) {
     const row = hstack(left, 5);
     if (ev.country) txt(row, flag(ev.country), 12);
-    txt(row, shortTitle(ev.title), 13, C.text, "bold");
+    txt(row, shortTitle(ev.title).toUpperCase(), opts.compact ? 14 : 16, C.text, "race");
     const p = parts(Date.parse(ev.start) - Date.now());
-    const cd = hstack(left, 4);
-    txt(cd, ev.subtitle, 10, C.dim, "bold");
-    txt(cd, ev.status === "live" ? "On track" : p.d ? `${p.d}d ${p.h}h ${p.m}m` : `${p.h}h ${p.m}m`, opts.compact ? 16 : 18, C.text, "round");
-    if (opts.compact) txt(cd, `${relDay(ev, T.en)} ${clock(ev.start)}`, 9, C.dim);
-    else txt(left, `${relDay(ev, T.en)} · ${clock(ev.start)}`, 10, C.dim);
+    const cd = hstack(left, 5);
+    txt(cd, ev.subtitle, 11, C.dim, "race");
+    txt(cd, ev.status === "live" ? "LIGHTS OUT" : p.d ? `${p.d}D ${p.h}H ${p.m}M` : `${p.h}H ${p.m}M`, opts.compact ? 18 : 21, C.text, "race");
+    addImage(cd, lightsImage(ev));
+    if (!opts.compact) txt(left, `${relDay(ev, T.en)} · ${clock(ev.start)}`, 10, C.dim);
   } else {
     txt(left, "Season complete", 12, C.dim);
   }
   top.addSpacer();
   if (ev && ev.track && opts.track) {
     const im = trackImage(ev.track, opts.compact ? 78 : 92);
-    if (im) { const wi = top.addImage(im); wi.imageSize = im.size; }
+    if (im) addImage(top, im);
   }
-  parent.addSpacer(opts.compact ? 3 : 4);
+  parent.addSpacer(opts.compact ? 3 : 5);
   for (const s of sport.subjects) {
     const r = hstack(parent, 6);
-    r.setPadding(opts.compact ? 2 : 3, 6, opts.compact ? 2 : 3, 6);
-    r.cornerRadius = 8;
+    r.setPadding(opts.compact ? 2 : 3, 4, opts.compact ? 2 : 3, 8);
+    r.cornerRadius = 6;
     r.backgroundColor = isHot(s.last) ? new Color("#ffb340", 0.18) : new Color(s.color || "#888888", 0.3);
-    txt(r, s.badge, 13, C.text, "round");
-    txt(r, s.short, 12, C.text, "heavy");
+    addImage(r, plateImage(s.badge, s.color, opts.compact ? 16 : 18));
+    txt(r, s.short, opts.compact ? 14 : 15, C.text, "race");
     r.addSpacer();
     const last = s.last;
-    txt(r, last && last.result ? last.result.summary : "–", 13, C.text, "round");
+    txt(r, last && last.result ? last.result.summary : "–", opts.compact ? 14 : 15, C.text, "race");
     txt(r, last ? shortTitle(last.title).replace(" GP", "") : "", 9, C.dim);
     txt(r, "·", 9, C.faint);
-    txt(r, s.ranking ? `P${s.ranking.position}` : "–", 13, C.text, "round");
-    txt(r, s.ranking ? `${Math.round(s.ranking.points)} pts` : "", 9, C.dim);
+    txt(r, s.ranking ? `P${s.ranking.position}` : "–", opts.compact ? 14 : 15, C.text, "race");
+    txt(r, s.ranking ? `${Math.round(s.ranking.points)} PTS` : "", 9, C.dim);
     if (!opts.compact) parent.addSpacer(2);
   }
 }
@@ -429,9 +521,17 @@ async function mediumWidget(data, param) {
   const sportId = param || (nextUp(data) || {}).sport && nextUp(data).sport.id;
   const sport = data.sports.find((s) => s.id === sportId) || data.sports[0];
   const w = new ListWidget();
-  w.setPadding(12, 14, 12, 14);
   sportBackground(w, sport);
-  await BLOCKS[sport.id](w, sport, { track: true, note: true });
+  if (sport.id === "f1") {
+    const L = largeSize();
+    w.backgroundImage = bandsBackground(new Size(L.width, Math.round(L.width * 0.47)),
+      [{ share: 1, colors: f1Colors(sport), alpha: 0.9, checker: true }]);
+    w.setPadding(14, 14, 10, 14);
+    await f1Block(w, sport, { track: true, note: true });
+  } else {
+    w.setPadding(12, 14, 12, 14);
+    await BLOCKS[sport.id](w, sport, { track: true, note: true });
+  }
   staleNote(w, data, [sport]);
   return w;
 }
@@ -447,32 +547,25 @@ function largeSize() {
   return hit ? new Size(hit[2], hit[3]) : new Size(Math.round(w * 0.86), Math.round(w * 0.9));
 }
 
-// Large: three full-bleed colour bands (F1 / NHL / badminton) that exactly fill the widget.
+// Large: three full-bleed colour bands (F1 / NHL / badminton). The bands and the F1 chequered
+// strip are one background image (stretched by iOS to the real size); content stacks are
+// transparent with heights in the same proportions.
 async function largeWidget(data) {
   const w = new ListWidget();
   w.setPadding(0, 0, 0, 0);
-  // Vertical backdrop in the top/bottom band colours hides any rounding gap at the edges.
-  const top = data.sports[0], bottom = data.sports[data.sports.length - 1];
-  const edge = (sp, end) => sp.id === "f1" ? f1Colors(sp)[end ? 1 : 0]
-    : sp.subjects.length === 1 && sp.subjects[0].color ? (end ? "#0c2a2e" : sp.subjects[0].color) : end ? "#1a1c21" : "#2a2d35";
-  const bg = new LinearGradient();
-  bg.colors = [new Color(edge(top, false)), new Color(edge(bottom, true))];
-  bg.locations = [0, 1];
-  bg.startPoint = new Point(0, 0);
-  bg.endPoint = new Point(0, 1);
-  w.backgroundGradient = bg;
   const size = largeSize();
   const share = { f1: 0.35, nhl: 0.29, badminton: 0.36 }; // tuned to content height
   const total = data.sports.reduce((a, sp) => a + (share[sp.id] || 0.33), 0);
+  const frac = (sp) => (share[sp.id] || 0.33) / total;
+  w.backgroundImage = bandsBackground(size, data.sports.map((sp) => ({
+    share: frac(sp), colors: BAND_COLORS(sp), alpha: sp.id === "f1" ? 0.9 : 1, checker: sp.id === "f1",
+  })));
   for (const sport of data.sports) {
     const box = w.addStack();
     box.layoutVertically();
     // Width 0 = stretch to the widget (rows contain spacers); only the height is fixed.
-    box.size = new Size(0, Math.floor(size.height * (share[sport.id] || 0.33) / total));
-    box.setPadding(8, 14, 6, 14);
-    if (sport.id === "f1") { const [a, b] = f1Colors(sport); box.backgroundGradient = gradient(a, 0.9, b, 0.9); }
-    else if (sport.subjects.length === 1 && sport.subjects[0].color) box.backgroundGradient = gradient(sport.subjects[0].color, 1, "#0c2a2e", 1);
-    else box.backgroundGradient = gradient("#2a2d35", 1, "#1a1c21", 1);
+    box.size = new Size(0, Math.floor(size.height * frac(sport)));
+    box.setPadding(sport.id === "f1" ? 10 : 8, 14, 6, 14);
     box.addSpacer(); // centre the content vertically in its band
     await BLOCKS[sport.id](box, sport, { track: sport.id === "f1", note: false, compact: true });
     if (sport.subjects.some((x) => x.stale)) txt(box, "⚠ stale", 8, C.amber);
@@ -528,21 +621,35 @@ function trackSVG(track) {
 function f1HTML(sport) {
   const ev = (sport.subjects.find((s) => s.next) || {}).next;
   const [c1, c2] = f1Colors(sport);
-  let h = `<section class="card" style="background:linear-gradient(140deg,${hex2rgba(c1, .55)},rgba(26,26,34,.7) 50%,${hex2rgba(c2, .5)})"><h6>Formula 1</h6>`;
+  const carbon = "repeating-linear-gradient(45deg,rgba(255,255,255,.025) 0 2px,transparent 2px 4px),repeating-linear-gradient(-45deg,rgba(0,0,0,.09) 0 2px,transparent 2px 4px)";
+  let h = `<section class="card f1" style="background:${carbon},linear-gradient(140deg,${hex2rgba(c1, .6)},rgba(20,20,26,.75) 50%,${hex2rgba(c2, .55)})">
+    <h6><span class="f1x logo">F1</span>${sport.next_round ? `<span class="f1x round">ROUND ${sport.next_round}</span>` : ""}</h6>`;
   if (ev) {
     const p = parts(Date.parse(ev.start) - Date.now());
-    h += `<div class="row"><div><div class="gp">${ev.image ? `<img class="flag" src="${esc(ev.image)}">` : ""}${esc(shortTitle(ev.title))}</div><div class="dim">${esc(ev.location)}</div></div>${trackSVG(ev.track)}</div>
-      <div class="count ${isHot(ev) ? "hot" : ""}"><div><div class="lbl">NEXT · <b>${esc(ev.subtitle)}</b></div>
-      <div class="digits">${[["DAYS", p.d], ["HRS", p.h], ["MIN", p.m]].map(([u, n]) => `<div><b>${String(n).padStart(2, "0")}</b><i>${u}</i></div>`).join("")}</div></div>
-      <div class="when"><div class="dim">${esc(relDay(ev, T.en))}</div><b>${esc(clock(ev.start))}</b></div></div>
-      <div class="strip">${(ev.sessions || []).map((s) => `<div class="${s.status === "final" ? "done" : s.start === ev.start ? "next" : ""}"><b>${esc({ "Sprint Quali": "SQ", Sprint: "SPR", Qualifying: "QUALI", Race: "RACE" }[s.name] || s.name)}</b><span>${esc(weekday(s.start))} ${esc(clock(s.start).replace(":00", "").replace(" ", "").toLowerCase())}</span>${s.result ? `<em>${sport.subjects.map((d) => { const x = ((d.next || {}).sessions || []).find((y) => y.name === s.name); return x && x.result ? `${d.short} ${x.result.summary}` : ""; }).join(" · ")}</em>` : ""}</div>`).join("")}</div>`;
+    const days = Math.floor((Date.parse(ev.start) - Date.now()) / DAY);
+    const lit = Math.max(0, Math.min(5, 5 - days));
+    const lights = ev.status === "live" ? `<span class="f1x lout">LIGHTS OUT</span>`
+      : `<span class="lights">${[0, 1, 2, 3, 4].map((i) => `<i class="${i < lit ? "on" : ""}"></i>`).join("")}</span>`;
+    h += `<div class="row"><div><div class="gp">${ev.image ? `<img class="flag" src="${esc(ev.image)}">` : ""}<span class="f1x">${esc(shortTitle(ev.title).toUpperCase())}</span></div><div class="dim">${esc(ev.location)}</div></div>${trackSVG(ev.track)}</div>
+      <div class="count ${isHot(ev) ? "hot" : ""}"><div><div class="lbl">NEXT · <b>${esc(ev.subtitle)}</b> ${lights}</div>
+      <div class="digits">${[["DAYS", p.d], ["HRS", p.h], ["MIN", p.m]].map(([u, n], i) => `${i ? `<span class="f1x sep">:</span>` : ""}<div><b class="f1x">${String(n).padStart(2, "0")}</b><i>${u}</i></div>`).join("")}</div></div>
+      <div class="when"><div class="dim">${esc(relDay(ev, T.en))}</div><b class="f1x">${esc(clock(ev.start))}</b></div></div>
+      <div class="strip">${(ev.sessions || []).map((s) => `<div class="${s.status === "final" ? "done" : s.start === ev.start ? "next" : ""}" ${s.start === ev.start ? `style="background:linear-gradient(135deg,${hex2rgba(c1, .75)},${hex2rgba(c2, .75)})"` : ""}><div><b class="f1x">${esc({ "Sprint Quali": "SQ", Sprint: "SPR", Qualifying: "QUALI", Race: "RACE" }[s.name] || s.name)}</b><span>${esc(weekday(s.start))} ${esc(clock(s.start).replace(":00", "").replace(" ", "").toLowerCase())}</span>${s.result ? `<em>${sport.subjects.map((d) => { const x = ((d.next || {}).sessions || []).find((y) => y.name === s.name); return x && x.result ? `${d.short} ${x.result.summary}` : ""; }).join(" · ")}</em>` : ""}</div></div>`).join("")}</div>`;
   }
   for (const s of sport.subjects) {
     const l = s.last, r = s.ranking;
-    h += `<div class="driver ${isHot(l) ? "hot" : ""}" style="background:linear-gradient(90deg,${hex2rgba(s.color, .35)},${hex2rgba(s.color, .04)} 75%);border-left:3px solid ${s.color || "#888"}">
-      <b class="num">${esc(s.badge)}</b><div class="who"><b>${esc(s.short)}</b><div class="dim">${esc(s.team || "")}</div></div>
-      <div class="stat"><i>LAST RACE</i><b>${esc(l && l.result ? l.result.summary : "–")}</b><span>${esc(l ? shortTitle(l.title).replace(" GP", "") : "")}</span></div>
-      <div class="stat"><i>STANDINGS</i><b>${r ? "P" + r.position : "–"}</b><span>${r ? Math.round(r.points) + " pts" : ""}</span></div></div>`;
+    h += `<div class="driver ${isHot(l) ? "hot" : ""}" style="background:linear-gradient(100deg,${hex2rgba(s.color, .4)},${hex2rgba(s.color, .05)} 70%)">
+      <div class="plate" style="background:${s.color || "#888"}"><span class="f1x">${esc(s.badge)}</span></div>
+      <div class="who"><b class="f1x">${esc(s.short)}</b><div class="dim">${esc(s.team || "")}</div></div>
+      <div class="stat tap" onclick="tbl('last_race')"><i>LAST RACE</i><b class="f1x">${esc(l && l.result ? l.result.summary : "–")}</b><span>${esc(l ? shortTitle(l.title).replace(" GP", "") : "")}</span></div>
+      <div class="stat tap" onclick="tbl('standings')"><i>STANDINGS</i><b class="f1x">${r ? "P" + r.position : "–"}</b><span>${r ? Math.round(r.points) + " pts" : ""}</span></div></div>`;
+  }
+  // Timing-tower tables, toggled by the stats above.
+  for (const kind of ["last_race", "standings"]) {
+    const t = (sport.tables || {})[kind];
+    if (!t) continue;
+    h += `<div class="f1t" id="t_${kind}"><div class="f1t-h"><b class="f1x">${esc(shortTitle(t.title).toUpperCase())}</b><span>${esc(t.subtitle || "")}${sport.tables_stale ? " · ⚠ stale" : ""}</span></div>
+      ${t.rows.map((r) => `<div class="f1t-r ${r.self ? "me" : ""}" ${r.self ? `style="box-shadow:inset 3px 0 0 ${r.color || "#fff"}"` : ""}><span class="p f1x">${r.pos}</span><span class="c" style="background:${r.color || "#888"}"></span><span class="cd f1x">${esc(r.code)}</span><span class="tm">${esc(r.team)}</span><span class="v">${esc(r.value)}</span><span class="x">${esc(r.extra)}</span></div>`).join("")}</div>`;
   }
   return h + "</section>";
 }
@@ -609,9 +716,27 @@ function detailHTML(data, focus) {
   .trackbox{flex:none;width:130px}.track{width:130px;stroke-width:3.6;fill:none;stroke-linejoin:round;stroke-linecap:round;overflow:visible}.legend{text-align:right;font-size:9px;white-space:nowrap}
   .count{display:flex;justify-content:space-between;align-items:flex-end;margin:12px 0;padding:10px 12px;border-radius:14px;background:rgba(0,0,0,.22)}.lbl{font-size:11px;color:rgba(255,255,255,.55)}
   .digits{display:flex;gap:12px}.digits div{text-align:center}.digits b{display:block;font-size:30px}.digits i{font-style:normal;font-size:9px;color:rgba(255,255,255,.45)}.when{text-align:right}.when b{font-size:17px}
-  .strip{display:flex;gap:3px;margin-bottom:10px}.strip div{flex:1;text-align:center;padding:6px 0;border-radius:9px}.strip b{display:block;font-size:10px}.strip span{font-size:11px;color:rgba(255,255,255,.6)}.strip em{display:block;font-size:9px;font-style:normal;color:rgba(255,255,255,.75)}
+  .f1x{font-family:"HelveticaNeue-CondensedBlack","Helvetica Neue",sans-serif;font-weight:900;font-style:italic;letter-spacing:.01em}
+  .card.f1{position:relative;overflow:hidden;padding-top:18px}.card.f1::before{content:"";position:absolute;left:0;right:0;top:0;height:6px;opacity:.55;background:repeating-conic-gradient(#fff 0 25%,#111 0 50%) 0 0/6px 6px}
+  .card.f1 h6{display:flex;align-items:center;gap:8px}.logo{color:#ff2a1f;font-size:16px;letter-spacing:0}.round{font-size:11px;padding:1px 7px;border-radius:3px;background:rgba(255,255,255,.15);color:#fff}
+  .card.f1 .gp span{font-size:21px;line-height:1}.card.f1 .count{background:rgba(0,0,0,.32);box-shadow:inset 3px 0 0 #ff2a1f;border-radius:12px}
+  .lbl{display:flex;align-items:center;gap:8px}.lights{display:inline-flex;gap:3px;padding:3px 5px;border-radius:4px;background:#0b0b0d;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+  .lights i{width:8px;height:8px;border-radius:50%;background:#5a1c1c}.lights i.on{background:#ff2a1f;box-shadow:0 0 6px #ff2a1f}.lout{color:#30d158;font-size:12px}
+  .card.f1 .digits{align-items:flex-start;gap:5px}.card.f1 .digits b{font-size:38px;line-height:.95}.sep{font-size:28px;color:rgba(255,255,255,.3)}.card.f1 .when b{font-size:20px}
+  .strip{display:flex;gap:5px;margin:0 3px 10px}.strip>div{flex:1;text-align:center;padding:6px 0;border-radius:3px;transform:skewX(-12deg);background:rgba(255,255,255,.07)}.strip>div>div{transform:skewX(12deg)}
+  .strip b{display:block;font-size:12px}.strip span{font-size:10px;color:rgba(255,255,255,.6)}.strip em{display:block;font-size:9px;font-style:normal;color:rgba(255,255,255,.75)}
   .strip .done{opacity:.55}.strip .next{background:rgba(255,255,255,.18)}
-  .driver{display:flex;align-items:center;gap:10px;padding:8px;border-radius:12px;margin-top:5px}.num{width:28px;text-align:center;font-size:22px}.who{flex:1}.stat{width:66px;text-align:right}.stat i{display:block;font-size:8px;font-style:normal;color:rgba(255,255,255,.45)}.stat b{font-size:20px}.stat span{display:block;font-size:10px;color:rgba(255,255,255,.5)}
+  .driver{display:flex;align-items:center;gap:10px;padding:7px 8px 7px 6px;border-radius:10px;margin-top:6px}
+  .plate{width:40px;height:32px;display:flex;align-items:center;justify-content:center;transform:skewX(-12deg);border-radius:3px;box-shadow:inset 0 -3px 0 rgba(0,0,0,.25)}.plate span{transform:skewX(12deg);font-size:22px}
+  .who{flex:1}.who b{font-size:21px}.stat{width:68px;text-align:right}.stat i{display:block;font-size:8px;font-style:normal;color:rgba(255,255,255,.45)}.stat b{font-size:24px}.stat span{display:block;font-size:10px;color:rgba(255,255,255,.5)}
+  .stat.tap i{border-bottom:1px dotted rgba(255,255,255,.4);display:inline-block}
+  .f1t{display:none;margin-top:8px;border-radius:10px;overflow:hidden;background:rgba(0,0,0,.42)}.f1t.open{display:block}
+  .f1t-h{display:flex;justify-content:space-between;align-items:baseline;padding:7px 10px 6px 16px;position:relative;background:rgba(255,255,255,.06)}
+  .f1t-h::before{content:"";position:absolute;left:0;top:0;bottom:0;width:7px;background:repeating-conic-gradient(#fff 0 25%,#111 0 50%) 0 0/7px 7px;opacity:.6}
+  .f1t-h b{font-size:15px}.f1t-h span{font-size:10px;color:rgba(255,255,255,.45)}
+  .f1t-r{display:flex;align-items:center;gap:7px;height:22px;padding:0 10px;font-size:12px;color:rgba(255,255,255,.8)}.f1t-r:nth-child(odd){background:rgba(255,255,255,.035)}.f1t-r.me{color:#fff;background:rgba(255,255,255,.13)}
+  .f1t-r .p{width:20px;text-align:right;font-size:13px;color:rgba(255,255,255,.55)}.f1t-r .c{width:4px;height:13px;border-radius:1px;transform:skewX(-12deg)}.f1t-r .cd{width:34px;font-size:14px}
+  .f1t-r .tm{flex:1;min-width:0;color:rgba(255,255,255,.45);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.f1t-r .v{font-family:"SF Mono",Menlo,monospace;font-size:11px}.f1t-r .x{width:30px;text-align:right;font-family:"SF Mono",Menlo,monospace;font-size:10px;color:rgba(255,255,255,.45)}
   .subj+.subj{margin-top:14px;padding-top:12px;border-top:.5px solid rgba(255,255,255,.12)}.sh{display:flex;align-items:center;gap:8px}.sh img{width:22px;height:22px;object-fit:contain}.sh>b{flex:1;font-size:15px}
   .rank{font-size:11px;color:rgba(255,255,255,.6)}.rank b{color:#fff;font-size:13px}.up{color:#30d158;font-style:normal}.down{color:#ff6961;font-style:normal}.note{font-size:11px;color:#5fd3da;margin:3px 0 0 30px}
   .matchup{display:flex;align-items:center;margin-top:8px;padding:10px;border-radius:14px;background:rgba(0,0,0,.22)}.team{width:84px;text-align:center}.team img{width:40px;height:40px;margin:0 auto 3px;object-fit:contain}.team b{display:block}.team span{display:block;font-size:10px;color:rgba(255,255,255,.6)}.team em{display:block;font-size:9px;font-style:normal;color:rgba(255,255,255,.4)}
@@ -631,7 +756,7 @@ function detailHTML(data, focus) {
   const body = order.map((sp) => (sp.id === "f1" ? f1HTML(sp) : h2hHTML(sp))).join("");
   const age = Math.round((Date.now() - Date.parse(data.generated_at)) / 60000);
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head>
-    <body>${body}<div class="foot">Updated ${age < 1 ? "just now" : age + " min ago"}</div></body></html>`;
+    <body>${body}<script>function tbl(k){document.querySelectorAll('.f1t').forEach(function(t){t.classList.toggle('open',t.id==='t_'+k&&!t.classList.contains('open'))})}</script><div class="foot">Updated ${age < 1 ? "just now" : age + " min ago"}</div></body></html>`;
 }
 
 // ---------- main ----------
