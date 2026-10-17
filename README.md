@@ -40,6 +40,21 @@ Then open Übersicht → Preferences → **Widgets Folder** and choose this repo
 because macOS privacy rules stop launchd jobs from reading `~/Documents`. Re-run it after
 changing `fetch.py`, `providers/` or `config.yaml`. `./launchd/install.sh remove` uninstalls.
 
+## iOS widget (Scriptable)
+
+`ios/` holds an iPhone version for [Scriptable](https://scriptable.app). It fetches the data
+on the phone itself (a JavaScript port of the data layer, same `data.json` schema), so it
+works without the Mac. Sizes: small (next event), medium (one sport), large (all sports)
+and lock screen; tapping a widget opens an interactive detail page.
+
+1. Install Scriptable, open it once and enable it under iCloud Drive.
+2. On the Mac run `./ios/install.sh` (copies `Sports Data.js` and `Sports Tracker.js` into
+   Scriptable's iCloud folder), or copy both files into Scriptable by hand.
+3. Add a Scriptable widget, choose script **Sports Tracker**, and optionally set the
+   parameter to `f1`, `nhl` or `badminton` (empty = whatever is coming up next).
+
+Edit `CONFIG` at the top of `Sports Tracker.js` to change who you follow.
+
 ## Configuration
 
 Edit `config.yaml` to choose who to follow, the timezone and extra output paths

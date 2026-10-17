@@ -29,6 +29,31 @@ runs from a runtime copy:
   this project's `widget/` folder; widget edits apply immediately.
 - Uninstall: `./launchd/install.sh remove`. Status: `launchctl print gui/$(id -u)/com.adaxu.sports-tracker`.
 
+## iOS version (`ios/`, Scriptable)
+- `Sports Data.js` — Scriptable module, JS port of `providers/` + fetch.py producing the same
+  schema (plus `country` ISO3 on badminton subjects/competitors and PNG flags, because widgets
+  can't render SVG). Requests run in parallel (~4 s total). Cache: Scriptable local documents
+  `sports-tracker/data.json`, refetched when older than 15 min; per-subject stale fallback and a
+  25 s timeout per subject. Track outlines cached as `track_<key>_<year>.json`. Badminton Chinese
+  names are fetched from this repo's raw `providers/badminton_names_zh.yaml` (cached 1 day).
+- BWF does NOT block Apple's URL stack (tested with URLSession), unlike urllib/curl/Node.
+- `Sports Tracker.js` — the widget: `CONFIG` at top (mirror of config.yaml); widget parameter
+  `f1|nhl|badminton|empty`; families small / medium / large / accessory*. NHL logos are swapped
+  to ESPN PNGs (`ESPN_NHL` code map). Tap → `scriptable:///run/...?view=detail` → WebView detail
+  page (native `<details>` for the candidate lists). Running it in the app shows a preview menu.
+- Install/update: `./ios/install.sh` copies both files to
+  `~/Library/Mobile Documents/iCloud~dk~simonbs~Scriptable/Documents`.
+- Testing without a phone: run the module under Node with shims for `Request`/`FileManager`/
+  `Timer` (route BWF through curl_cffi, since Node is blocked) and compare with Python's
+  data.json; widget layouts can be mocked by rendering the ListWidget tree to HTML.
+- Large widget = three full-bleed colour bands. Scriptable can't read a widget's size, so
+  `largeSize()` maps `Device.screenSize()` to Apple's widget sizes (402×874 → 364×382, verified
+  on the user's phone); band width is 0 (stretch), heights split by `share`; a vertical backdrop
+  in the edge colours hides rounding gaps. Keep `compact` mode lean — content is tight.
+- Widget memory is tight: no large images (flags are emoji via `flag()`, NHL logos via ESPN's
+  96 px resizer), the BWF top-500 rank map is cached daily, and `load()` uses a 90 s lock so
+  only one widget fetches at a time. Widget errors render as text instead of a blank widget.
+
 ## Data sources
 | Sport | Source | Used for | Notes |
 |---|---|---|---|

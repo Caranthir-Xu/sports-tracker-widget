@@ -38,6 +38,20 @@ macOS 的隐私保护不允许 launchd 定时任务读取"文稿"（Documents）
 会把数据层复制到 `~/Library/Application Support/sports-tracker/` 运行。修改 `fetch.py`、
 `providers/` 或 `config.yaml` 后需要重新运行一次 `install.sh`。卸载：`./launchd/install.sh remove`。
 
+## iPhone 小组件（Scriptable）
+
+`ios/` 里是 iPhone 版，基于 [Scriptable](https://scriptable.app)。数据在手机上直接抓取
+（数据层的 JavaScript 版本，输出同样格式的 `data.json`），不依赖 Mac。
+尺寸：小号（最近一场）、中号（单项运动）、大号（三项概览）和锁屏小组件；点击小组件会打开可交互的详情页。
+
+1. 安装 Scriptable，打开一次，并在 iCloud 云盘设置中打开 Scriptable。
+2. 在 Mac 上运行 `./ios/install.sh`，会把 `Sports Data.js` 和 `Sports Tracker.js` 复制到
+   Scriptable 的 iCloud 文件夹；也可以手动把这两个文件放进 Scriptable。
+3. 添加 Scriptable 小组件，脚本选 **Sports Tracker**；参数可填 `f1`、`nhl` 或 `badminton`
+   （留空则自动显示最近要开始的比赛）。
+
+修改关注对象：编辑 `Sports Tracker.js` 顶部的 `CONFIG`。
+
 ## 配置
 
 在 `config.yaml` 里设置关注对象、时区和额外的输出位置（例如在 iCloud 云盘保存一份 `data.json`）。
