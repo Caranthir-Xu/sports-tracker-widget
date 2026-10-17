@@ -9,7 +9,7 @@
 #        ./launchd/install.sh remove   unload + delete runtime copy
 set -e
 LABEL=com.adaxu.sports-tracker
-LABELS="$LABEL $LABEL.live"   # 30-min snapshot + 1-min live scores
+LABELS="$LABEL $LABEL.live"   # 30-min snapshot + 20-s live scores
 PROJECT="$(cd "$(dirname "$0")/.." && pwd)"
 RUNTIME="$HOME/Library/Application Support/sports-tracker"
 
@@ -38,4 +38,4 @@ for L in $LABELS; do
   launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/$L.plist"
 done
 echo "deployed to $RUNTIME"
-echo "loaded $LABEL (now + every 30 min) and $LABEL.live (every minute)"
+echo "loaded $LABEL (now + every 30 min) and $LABEL.live (every 20 s)"

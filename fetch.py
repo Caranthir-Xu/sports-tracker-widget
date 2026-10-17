@@ -4,7 +4,7 @@
 A failing subject keeps its last good data and is marked stale;
 other subjects are unaffected.
 
-`fetch.py --live` (run every minute) only touches games that are live or about to
+`fetch.py --live` (run every 20 s) only touches games that are live or about to
 start, via each provider's optional refresh_live(); it exits without any request
 when nothing is on.
 """
@@ -39,6 +39,15 @@ PROFILE_KEYS = ("team", "color", "image", "badge")
 def profile_fields(src, cfg):
     """Display extras for a subject; values in config.yaml override provider data."""
     return {k: cfg.get(k, src.get(k)) for k in PROFILE_KEYS}
+
+
+def carry_live(subj, old):
+    """The full run doesn't fetch live state; keep the live job's last values for the same
+    in-progress event so the widget's live clock doesn't blank out until the next live poll."""
+    new_ev, old_ev = subj.get("next") or {}, old.get("next") or {}
+    if (new_ev.get("status") == "live" and not new_ev.get("live") and old_ev.get("live")
+            and new_ev.get("id") is not None and new_ev.get("id") == old_ev.get("id")):
+        new_ev["live"] = old_ev["live"]
 
 
 def write_atomic(path, data):
@@ -77,6 +86,7 @@ def main():
                 profile = data.pop("profile", None) or {}
                 subj = {**base, **profile_fields(profile, cfg),
                         "updated_at": iso(now_utc()), "stale": False, "error": None, **data}
+                carry_live(subj, previous.get(cfg["id"], {}))
             except Exception as e:
                 failures += 1
                 traceback.print_exc(file=sys.stderr)

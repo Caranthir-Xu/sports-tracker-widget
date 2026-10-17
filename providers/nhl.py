@@ -1,8 +1,10 @@
 """NHL: schedule and standings from api-web.nhle.com (unofficial, no key)."""
 import copy
+import json
+import urllib.request
 from datetime import timedelta
 
-from .common import get_json, event, result, competitor, now_utc, parse_dt
+from .common import UA, get_json, event, result, competitor, now_utc, parse_dt, iso
 
 API = "https://api-web.nhle.com/v1"
 GAME_TYPES = {1: "NHL Preseason", 2: "NHL Regular Season", 3: "NHL Playoffs"}
@@ -182,18 +184,30 @@ LIVE_AFTER = timedelta(hours=5)      # give up if a game somehow never reports f
 ORDINALS = {1: "1ST", 2: "2ND", 3: "3RD"}
 
 
-def _live_state(d):
-    """Period / clock / shots from a gamecenter landing of a live game."""
+def _landing_live(game_id):
+    """Uncached landing fetch plus the moment it was generated: the NHL CDN caches it
+    ~19 s, so subtract the HTTP Age header to know when the clock value was true."""
+    req = urllib.request.Request(f"{API}/gamecenter/{game_id}/landing", headers={"User-Agent": UA})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        age = int(r.headers.get("Age") or 0)
+        return json.load(r), now_utc() - timedelta(seconds=age)
+
+
+def _live_state(d, as_of=None):
+    """Period / clock / shots from a gamecenter landing of a live game. Clients count the
+    clock down from `seconds` at `as_of` while `running`, and re-sync on each poll."""
     pd = d.get("periodDescriptor") or {}
     clock = d.get("clock") or {}
     ptype = pd.get("periodType", "REG")
     return {
         "period": ORDINALS.get(pd.get("number"), ptype) if ptype == "REG" else ptype,  # 1ST / 2ND / 3RD / OT / SO
         "clock": clock.get("timeRemaining"),
+        "seconds": clock.get("secondsRemaining"),
+        "as_of": iso(as_of or now_utc()),
         "intermission": bool(clock.get("inIntermission")),
         "running": bool(clock.get("running")),
         "sog": {"away": d["awayTeam"].get("sog"), "home": d["homeTeam"].get("sog")},
-        "updated_at": now_utc().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "updated_at": iso(now_utc()),
     }
 
 
@@ -209,7 +223,7 @@ def refresh_live(subj, current):
     start, now = parse_dt(ev["start"]), now_utc()
     if ev.get("status") != "live" and not (start - LIVE_BEFORE <= now <= start + LIVE_AFTER):
         return None
-    d = _landing(ev["id"])
+    d, as_of = _landing_live(ev["id"])
     state = d.get("gameState")
     if state in FINISHED:
         return fetch_subject(subj)
@@ -220,7 +234,7 @@ def refresh_live(subj, current):
     scores = {"away": d["awayTeam"].get("score", 0), "home": d["homeTeam"].get("score", 0)}
     for side, c in zip(("away", "home"), ev["competitors"]):
         c["score"] = scores[side]
-    ev["live"] = _live_state(d)
+    ev["live"] = _live_state(d, as_of)
     ev["detail"] = _detail_from_landing(d)
     return {"next": ev}
 

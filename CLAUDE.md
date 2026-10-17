@@ -13,7 +13,7 @@ client (Übersicht now, iOS Scriptable later) only reads `data.json`.
 - `providers/common.py` — `get_json` (urllib, cached per run), `event()`/`result()` builders
 - `widget/sports-tracker.widget/index.jsx` — Übersicht widget (display only)
 - `launchd/install.sh` + `*.plist.template` — scheduled jobs: `com.adaxu.sports-tracker`
-  (full snapshot, every 30 min) and `com.adaxu.sports-tracker.live` (`fetch.py --live`, every 60 s)
+  (full snapshot, every 30 min) and `com.adaxu.sports-tracker.live` (`fetch.py --live`, every 20 s)
 - Run manually: `.venv/bin/python fetch.py` (Python 3.9, deps in `requirements.txt`: PyYAML, curl_cffi).
   Writes the project's own `data.json` (dev copy; the widget does not read it).
 
@@ -109,8 +109,9 @@ Event = { title, subtitle, start, time_precision ("exact"|"date"),
           status ("scheduled"|"live"|"final"|"cancelled"),
           result: { outcome ("win"|"loss"|null), summary } | null,
           id,                    # source id (NHL game id) for live refresh
-          live: { period ("1ST".."3RD"|"OT"|"SO"), clock, intermission, running, sog: {away, home},
-                  updated_at } | null,   # NHL, written by fetch.py --live while a game is on
+          live: { period ("1ST".."3RD"|"OT"|"SO"), clock, seconds, as_of, intermission, running,
+                  sog: {away, home}, updated_at } | null,   # NHL, written by fetch.py --live while a game is on
+          # seconds = clock seconds remaining, true at as_of (fetch time minus the CDN Age header)
           url, location, image (e.g. country flag) — each may be null,
           competitors: [ Competitor ] | null,                       # head-to-head only
           sessions: [ { name, start, status, result } ] | null }   # F1 weekend only
@@ -180,7 +181,7 @@ Event also has:
 - A full run takes ~15 s (BWF is the slow part).
 - A scheduled event whose start time has passed but is not live yet (NHL "PRE", delays) shows
   "Starting soon" / "即将开始", not "started". The live job ignores PRE and updates once LIVE.
-- Widget: refreshes every 60 s (just `cat`), highlights events that are live or
+- Widget: refreshes every 15 s (just `cat`; keeps live scores fresh), highlights events that are live or
   started < 24 h ago (date-only: date == today in `timezone`) with an amber tint +
   "Last 24h"/"Today"/"Live" pill; title shortening ("Grand Prix" → "GP", drop year,
   drop leading all-caps sponsor words) is display-only.
@@ -202,7 +203,15 @@ Event also has:
   NHL polls `gamecenter/{id}/landing` only if the next game is live or within −15 min…+5 h of
   its start (otherwise no request); updates score, `live`, `detail` (goals so far). When the
   game reports FINAL it returns a full `fetch_subject()` so last/next roll over. Writes only
-  when something changed; logs to `logs/live.log`.
+  when something changed; logs to `logs/live.log`. Latency budget: NHL CDN caches the landing
+  ~19 s (`max-age=19`), job every 20 s, widget re-read every 15 s → live data ≲ 40 s behind.
+  Was 60 s + 60 s, which looked "stuck" during play. Python's default urllib UA gets 403 from
+  the NHL CDN; providers send their own UA.
+- Live clock countdown: `LiveClock` renders a span with data-sec / data-asof / data-running and a
+  module-level 1 s `setInterval` (`window.__sportsClockTicker`) counts it down locally while
+  running; each 15 s re-render replaces the span → corrected by the latest poll (whistles cause
+  a small overshoot until then). Not running / intermission → static. The 30-min full run keeps
+  the live job's last `live` for the same game id (`carry_live`) so the clock never blanks.
 - NHL card ("hockey", refined): next game on a faint ice sheet (`RinkLines`: goal lines and
   creases at the ends, blue lines beside the logos, red line only as ticks at the boards —
   nothing crosses the text), team logo + record + streak chip. Live: big score, red dot +

@@ -9,7 +9,7 @@
 const DATA = "$HOME/Library/Application Support/sports-tracker/data.json";
 
 export const command = `cat "${DATA}"`;
-export const refreshFrequency = 60 * 1000; // re-read every minute for countdowns
+export const refreshFrequency = 15 * 1000; // re-read often: cheap local cat, keeps live scores fresh
 
 const DAY = 24 * 3600 * 1000;
 const AMBER = "#ffb340";
@@ -816,6 +816,34 @@ function F1Card({ sport, tz }) {
 
 const isFlag = (url) => /flag/i.test(url || "");
 
+// Live game clock: count down locally every second from the polled value (seconds at as_of)
+// while the clock is running; every data refresh re-renders the span and corrects any drift
+// (e.g. whistles, which the widget cannot see).
+const fmtClock = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+
+function liveSeconds(el) {
+  const sec = +el.dataset.sec;
+  if (el.dataset.running !== "1") return sec;
+  return Math.max(0, Math.round(sec - (Date.now() - Date.parse(el.dataset.asof)) / 1000));
+}
+
+if (typeof window !== "undefined" && !window.__sportsClockTicker) {
+  window.__sportsClockTicker = setInterval(() => {
+    document.querySelectorAll("[data-live-clock]").forEach((el) => { el.textContent = fmtClock(liveSeconds(el)); });
+  }, 1000);
+}
+
+const LiveClock = ({ lv }) => {
+  if (lv.seconds == null || !lv.as_of) return <span>{lv.clock}</span>;
+  const running = lv.running && !lv.intermission;
+  const sec = running ? Math.max(0, Math.round(lv.seconds - (Date.now() - Date.parse(lv.as_of)) / 1000)) : lv.seconds;
+  return (
+    <span data-live-clock="" data-sec={lv.seconds} data-asof={lv.as_of} data-running={running ? "1" : "0"}>
+      {fmtClock(sec)}
+    </span>
+  );
+};
+
 // Faint ice markings behind the NHL matchup, kept clear of the text: goal lines + creases at
 // the ends, blue lines between the logos and the centre, red line only as ticks at the boards.
 const RinkLines = () => (
@@ -856,7 +884,8 @@ function Matchup({ ev, tz, L, zh, rink }) {
           <div className="live-score">{a.score || 0}<i>:</i>{b.score || 0}</div>
           <div className="live-state">
             <span className="dot" />
-            {lv ? (lv.intermission ? `${lv.period} INT` : `${lv.period}${lv.clock ? " · " + lv.clock : ""}`) : L.live}
+            {lv ? (lv.intermission ? <span>{lv.period} INT · <LiveClock lv={lv} /></span>
+              : <span>{lv.period}{lv.clock || lv.seconds != null ? " · " : ""}<LiveClock lv={lv} /></span>) : L.live}
           </div>
           {lv && lv.sog && <div className="live-sog">SOG {lv.sog.away}–{lv.sog.home}</div>}
         </div>

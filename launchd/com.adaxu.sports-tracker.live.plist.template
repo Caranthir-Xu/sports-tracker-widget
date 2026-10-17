@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Runs fetch.py --live every minute (no requests unless a game is on). Template: install.sh replaces __RUNTIME__ -->
+<!-- Runs fetch.py --live every 20 s (no requests unless a game is on; NHL API caches ~19 s). Template: install.sh replaces __RUNTIME__ -->
 <plist version="1.0">
 <dict>
   <key>Label</key>
@@ -14,7 +14,7 @@
   <key>WorkingDirectory</key>
   <string>__RUNTIME__</string>
   <key>StartInterval</key>
-  <integer>60</integer>
+  <integer>20</integer>
   <key>StandardOutPath</key>
   <string>__RUNTIME__/logs/live.log</string>
   <key>StandardErrorPath</key>
