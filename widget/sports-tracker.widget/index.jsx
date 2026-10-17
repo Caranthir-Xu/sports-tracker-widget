@@ -60,46 +60,91 @@ export const className = `
   .ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hot { background: rgba(255, 179, 64, 0.1); box-shadow: inset 0 0 0 0.5px rgba(255, 179, 64, 0.4); }
 
-  /* ---- F1 ---- */
+  /* ---- F1: racing style (condensed italic type, start lights, livery slants) ---- */
+  .f1x {
+    font-family: "HelveticaNeue-CondensedBlack", "Helvetica Neue Condensed Black", "Helvetica Neue", sans-serif;
+    font-weight: 900; font-style: italic; letter-spacing: 0.01em;
+  }
+  .card.f1 { position: relative; overflow: hidden; padding-top: 16px; }
+  .card.f1::before { /* chequered strip */
+    content: ""; position: absolute; left: 0; right: 0; top: 0; height: 5px; opacity: 0.55;
+    background: repeating-conic-gradient(#fff 0 25%, #111 0 50%) 0 0 / 6px 6px;
+  }
+  .f1-logo { color: #ff2a1f; font-size: 14px; letter-spacing: 0; margin-right: 6px; text-transform: none; }
+  .f1-round { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.14); color: #fff; letter-spacing: 0.04em; }
   .gp { display: flex; align-items: center; gap: 9px; }
-  .gp .flag { width: 30px; height: 20px; border-radius: 4px; object-fit: cover; }
-  .gp-name { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
-  .gp-loc { font-size: 11px; }
+  .gp .flag { width: 30px; height: 20px; border-radius: 3px; object-fit: cover; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25); }
+  .gp-name { font-size: 19px; line-height: 1; text-transform: uppercase; }
+  .gp-loc { font-size: 11px; margin-top: 3px; }
   .count {
     display: flex; align-items: flex-end; justify-content: space-between;
-    margin: 11px 0 10px; padding: 9px 11px; border-radius: 14px;
-    background: rgba(0, 0, 0, 0.22);
+    margin: 11px 0 10px; padding: 9px 12px; border-radius: 12px;
+    background: rgba(0, 0, 0, 0.32); box-shadow: inset 3px 0 0 #ff2a1f;
   }
-  .count-label { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+  .count-label { display: flex; align-items: center; gap: 8px; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
   .count-label b { color: #fff; }
-  .digits { display: flex; gap: 10px; margin-top: 3px; }
+  .lights { display: flex; gap: 3px; padding: 3px 5px; border-radius: 4px; background: #0b0b0d; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12); }
+  .lights i { width: 7px; height: 7px; border-radius: 50%; background: #5a1c1c; box-shadow: inset 0 0 0 1px rgba(255, 120, 120, 0.25); }
+  .lights i.on { background: #ff2a1f; box-shadow: 0 0 6px #ff2a1f; }
+  .lights-out { color: #30d158; font-size: 10px; }
+  .digits { display: flex; align-items: flex-start; gap: 4px; margin-top: 4px; }
   .digit { text-align: center; }
-  .digit .n { font-size: 26px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
-  .digit .u { font-size: 8px; font-weight: 700; letter-spacing: 0.1em; color: rgba(255, 255, 255, 0.45); margin-top: 3px; }
+  .digit .n { font-size: 34px; line-height: 0.95; }
+  .digit .u { font-size: 8px; font-weight: 700; letter-spacing: 0.12em; color: rgba(255, 255, 255, 0.45); margin-top: 3px; }
+  .digits .sep { font-size: 26px; line-height: 1; color: rgba(255, 255, 255, 0.3); }
   .count-when { text-align: right; font-size: 11px; line-height: 1.35; }
-  .count-when .t { font-size: 15px; font-weight: 600; color: #fff; }
-  .strip { display: flex; margin-bottom: 10px; gap: 2px; }
-  .sess { flex: 1; text-align: center; padding: 5px 0 4px; border-radius: 8px; }
-  .sess .nm { font-size: 9px; font-weight: 800; letter-spacing: 0.06em; }
-  .sess .dt { font-size: 10px; color: rgba(255, 255, 255, 0.6); margin-top: 1px; }
-  .sess.done { opacity: 0.38; }
+  .count-when .t { font-size: 18px; color: #fff; }
+  .strip { display: flex; margin: 0 2px 10px; gap: 4px; }
+  .sess { flex: 1; text-align: center; padding: 5px 0 4px; border-radius: 3px; transform: skewX(-12deg); background: rgba(255, 255, 255, 0.07); }
+  .sess > * { transform: skewX(12deg); }
+  .sess .nm { font-size: 11px; }
+  .sess .dt { font-size: 9px; color: rgba(255, 255, 255, 0.6); margin-top: 1px; }
+  .sess.done { opacity: 0.4; }
   .sess.next .dt { color: #fff; }
   .sess.live { background: ${LIVE_RED}; }
   .driver {
     display: flex; align-items: center; gap: 10px;
-    padding: 7px 8px 7px 0; border-radius: 12px;
+    padding: 6px 8px 6px 6px; border-radius: 10px;
   }
-  .driver + .driver { margin-top: 4px; }
-  .driver .bar { width: 3px; align-self: stretch; border-radius: 2px; }
-  .driver .num { width: 26px; font-size: 20px; font-weight: 800; text-align: center; letter-spacing: -0.03em; color: rgba(255, 255, 255, 0.9); }
+  .driver + .driver { margin-top: 5px; }
+  .driver .plate { /* car number on a slanted team-colour plate */
+    width: 36px; height: 30px; display: flex; align-items: center; justify-content: center;
+    transform: skewX(-12deg); border-radius: 3px; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.25);
+  }
+  .driver .plate span { transform: skewX(12deg); font-size: 20px; color: #fff; }
   .driver .who { flex: 1; min-width: 0; }
-  .driver .code { font-size: 14px; font-weight: 800; letter-spacing: 0.02em; }
-  .driver .meta { font-size: 10px; margin-top: 1px; }
+  .driver .code { font-size: 19px; line-height: 1; }
+  .driver .meta { font-size: 10px; margin-top: 2px; }
   .driver .wk { font-size: 9px; margin-top: 2px; color: rgba(255, 255, 255, 0.75); }
-  .driver .stat { width: 60px; text-align: right; }
+  .driver .stat { width: 62px; text-align: right; }
   .driver .stat .k { font-size: 8px; font-weight: 700; letter-spacing: 0.08em; color: rgba(255, 255, 255, 0.45); }
-  .driver .stat .v { font-size: 18px; font-weight: 800; line-height: 1.1; letter-spacing: -0.02em; }
+  .driver .stat .v { font-size: 22px; line-height: 1.05; }
   .driver .stat .s { font-size: 9px; color: rgba(255, 255, 255, 0.5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .driver .stat.click { cursor: pointer; border-radius: 6px; padding: 1px 3px; margin: -1px -3px; }
+  .driver .stat.click:hover { background: rgba(255, 255, 255, 0.1); }
+  .driver .stat.click .k { border-bottom: 1px dotted rgba(255, 255, 255, 0.35); }
+  /* timing-tower tables */
+  .f1t { display: none; margin-top: 7px; border-radius: 10px; overflow: hidden; background: rgba(0, 0, 0, 0.42); }
+  .f1t.open { display: block; }
+  .f1t-h {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 6px 8px 5px 14px; position: relative; background: rgba(255, 255, 255, 0.06);
+  }
+  .f1t-h::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px;
+    background: repeating-conic-gradient(#fff 0 25%, #111 0 50%) 0 0 / 6px 6px; opacity: 0.6; }
+  .f1t-h b { font-size: 13px; text-transform: uppercase; }
+  .f1t-h span { font-size: 9px; color: rgba(255, 255, 255, 0.45); }
+  .f1t-body { padding: 3px 0 4px; }
+  .f1t-r { display: flex; align-items: center; gap: 6px; height: 16px; padding: 0 8px; font-size: 10px; color: rgba(255, 255, 255, 0.8); }
+  .f1t-r:nth-child(even) { background: rgba(255, 255, 255, 0.035); }
+  .f1t-r.me { color: #fff; background: rgba(255, 255, 255, 0.13); }
+  .f1t-r .p { width: 18px; text-align: right; font-size: 11px; color: rgba(255, 255, 255, 0.55); }
+  .f1t-r.me .p { color: #fff; }
+  .f1t-r .c { width: 4px; height: 11px; border-radius: 1px; transform: skewX(-12deg); }
+  .f1t-r .cd { width: 30px; font-size: 12px; }
+  .f1t-r .tm { flex: 1; min-width: 0; color: rgba(255, 255, 255, 0.45); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .f1t-r .v { text-align: right; white-space: nowrap; font-family: "SF Mono", Menlo, monospace; font-size: 9.5px; }
+  .f1t-r .x { width: 26px; text-align: right; color: rgba(255, 255, 255, 0.45); font-family: "SF Mono", Menlo, monospace; font-size: 9px; }
 
   /* ---- head-to-head (NHL, badminton) ---- */
   .subj + .subj { margin-top: 12px; padding-top: 11px; border-top: 0.5px solid rgba(255, 255, 255, 0.12); }
@@ -424,29 +469,43 @@ const Stale = ({ s, L }) =>
 
 // ---------- F1 card (Box Box style, team-colour theme) ----------
 
+// Start lights: one more red light per day as the session nears; all five on the final day,
+// then "lights out" once it is live.
+function Lights({ ev }) {
+  if (ev.status === "live") return <span className="lights-out f1x">LIGHTS OUT</span>;
+  const days = Math.floor((Date.parse(ev.start) - Date.now()) / DAY);
+  const lit = Math.max(0, Math.min(5, 5 - days));
+  return <span className="lights">{[0, 1, 2, 3, 4].map((i) => <i key={i} className={i < lit ? "on" : ""} />)}</span>;
+}
+
 function Countdown({ ev, tz, L }) {
   const live = ev.status === "live";
   const p = parts(Date.parse(ev.start) - Date.now());
+  const units = [["DAYS", p.d], ["HRS", p.h], ["MIN", p.m]];
   return (
     <div className={`count ${isHot(ev, tz) ? "hot" : ""}`}>
       <div>
-        <div className="count-label dim">{live ? <span className="pill live">Live</span> : "Next"} · <b>{ev.subtitle}</b></div>
+        <div className="count-label dim">
+          <span>{live ? <span className="pill live">Live</span> : "Next"} · <b>{ev.subtitle}</b></span>
+          <Lights ev={ev} />
+        </div>
         {live ? (
-          <div className="digits"><div className="digit"><div className="n">On track</div></div></div>
+          <div className="digits"><div className="digit"><div className="n f1x">ON TRACK</div></div></div>
         ) : (
           <div className="digits">
-            {[["DAYS", p.d], ["HRS", p.h], ["MIN", p.m]].map(([u, n]) => (
+            {units.map(([u, n], i) => [
+              i > 0 && <span className="sep f1x" key={u + "s"}>:</span>,
               <div className="digit" key={u}>
-                <div className="n">{String(n).padStart(2, "0")}</div>
+                <div className="n f1x">{String(n).padStart(2, "0")}</div>
                 <div className="u">{u}</div>
-              </div>
-            ))}
+              </div>,
+            ])}
           </div>
         )}
       </div>
       <div className="count-when dim">
         <div>{relDay(ev, tz, L)}</div>
-        <div className="t">{clock(ev.start, tz)}</div>
+        <div className="t f1x">{clock(ev.start, tz)}</div>
       </div>
     </div>
   );
@@ -460,7 +519,7 @@ function Strip({ sessions, nextStart, tz, accent }) {
         const cls = s.status === "live" ? "live" : s.status === "final" ? "done" : s.start === nextStart ? "next" : "";
         return (
           <div className={`sess ${cls}`} key={s.name} style={cls === "next" ? { background: accent } : null}>
-            <div className="nm">{SESSION_ABBR[s.name] || s.name}</div>
+            <div className="nm f1x">{SESSION_ABBR[s.name] || s.name}</div>
             <div className="dt">{weekday(s.start, tz)} {clock(s.start, tz).replace(":00", "").replace(" ", "").toLowerCase()}</div>
           </div>
         );
@@ -469,7 +528,7 @@ function Strip({ sessions, nextStart, tz, accent }) {
   );
 }
 
-// Driver row: number, code/team, this weekend's session results, last race, standings.
+// Driver row: number plate, code/team, this weekend's session results, last race, standings.
 function Driver({ s, tz }) {
   const color = s.color || "#888888";
   const last = s.last;
@@ -478,11 +537,10 @@ function Driver({ s, tz }) {
   const weekend = ((s.next && s.next.sessions) || []).filter((x) => x.result);
   return (
     <div className={`driver ${hot ? "hot" : ""}`}
-         style={hot ? null : { background: `linear-gradient(90deg, ${rgba(color, 0.32)}, ${rgba(color, 0.04)} 75%)` }}>
-      <div className="bar" style={{ background: color }} />
-      <div className="num">{s.badge}</div>
+         style={hot ? null : { background: `linear-gradient(100deg, ${rgba(color, 0.38)}, ${rgba(color, 0.05)} 70%)` }}>
+      <div className="plate" style={{ background: color }}><span className="f1x">{s.badge}</span></div>
       <div className="who">
-        <div className="code">{s.short}</div>
+        <div className="code f1x">{s.short}</div>
         <div className="meta dim ellipsis">{s.team}</div>
         {weekend.length > 0 && (
           // Newest first, at most 3, so qualifying is never cut off.
@@ -491,15 +549,48 @@ function Driver({ s, tz }) {
           </div>
         )}
       </div>
-      <div className="stat">
+      <div className="stat click" onClick={(e) => toggleTable(e, "last_race")}>
         <div className="k">LAST RACE</div>
-        <div className="v">{last && last.result ? last.result.summary : "–"}</div>
+        <div className="v f1x">{last && last.result ? last.result.summary : "–"}</div>
         <div className="s">{last ? shortTitle(last.title).replace(" GP", "") : ""}</div>
       </div>
-      <div className="stat">
+      <div className="stat click" onClick={(e) => toggleTable(e, "standings")}>
         <div className="k">STANDINGS</div>
-        <div className="v">{r ? `P${r.position}` : "–"}</div>
+        <div className="v f1x">{r ? `P${r.position}` : "–"}</div>
         <div className="s">{r ? `${Math.round(r.points)} pts` : ""}</div>
+      </div>
+    </div>
+  );
+}
+
+// Full last-race classification / driver standings, opened from the driver stats.
+function toggleTable(e, kind) {
+  const card = e.currentTarget.closest(".card");
+  card.querySelectorAll(".f1t").forEach((t) => {
+    t.classList.toggle("open", t.dataset.kind === kind && !t.classList.contains("open"));
+  });
+}
+
+function F1Table({ kind, table, stale }) {
+  if (!table) return null;
+  return (
+    <div className="f1t" data-kind={kind}>
+      <div className="f1t-h">
+        <b className="f1x">{shortTitle(table.title)}</b>
+        <span>{table.subtitle}{stale ? " · ⚠ stale" : ""}</span>
+      </div>
+      <div className="f1t-body">
+        {table.rows.map((r) => (
+          <div className={`f1t-r ${r.self ? "me" : ""}`} key={r.code + r.pos}
+               style={r.self ? { boxShadow: `inset 3px 0 0 ${r.color || "#fff"}` } : null}>
+            <span className="p f1x">{r.pos}</span>
+            <span className="c" style={{ background: r.color || "#888" }} />
+            <span className="cd f1x">{r.code}</span>
+            <span className="tm">{r.team}</span>
+            <span className="v">{r.value}</span>
+            <span className="x">{r.extra}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -543,13 +634,16 @@ function F1Card({ sport, tz }) {
   // Theme from the followed drivers' team colours (Ferrari red -> Red Bull blue).
   const c1 = (sport.subjects[0] || {}).color || "#ed1131";
   const c2 = (sport.subjects[1] || {}).color || "#1e3a8a";
-  const bg = `linear-gradient(140deg, ${rgba(c1, 0.55)} 0%, rgba(26, 26, 34, 0.6) 50%, ${rgba(c2, 0.5)} 100%)`;
+  // Faint carbon-fibre weave over the team-colour gradient.
+  const carbon = "repeating-linear-gradient(45deg, rgba(255,255,255,0.025) 0 2px, transparent 2px 4px), "
+    + "repeating-linear-gradient(-45deg, rgba(0,0,0,0.09) 0 2px, transparent 2px 4px)";
+  const bg = `${carbon}, linear-gradient(140deg, ${rgba(c1, 0.6)} 0%, rgba(20, 20, 26, 0.68) 50%, ${rgba(c2, 0.55)} 100%)`;
   const accent = `linear-gradient(135deg, ${rgba(c1, 0.75)}, ${rgba(c2, 0.75)})`;
   const collapsed = isCollapsed(sport, tz);
   return (
     <div className={`card f1 ${collapsed ? "collapsed" : ""}`} style={{ background: bg }}>
       <Header>
-        <span>Formula 1</span>
+        <span><span className="f1-logo f1x">F1</span>{sport.next_round && <span className="f1-round f1x">ROUND {sport.next_round}</span>}</span>
         <span className="right"><Badge ev={ev} tz={tz} L={L} /><Chevron sport={sport} tz={tz} collapsed={collapsed} /></span>
       </Header>
       <Summary sport={sport} tz={tz} L={L} />
@@ -560,7 +654,7 @@ function F1Card({ sport, tz }) {
               <div className="gp">
                 <Img src={ev.image} cls="flag" />
                 <div>
-                  <div className="gp-name">{shortTitle(ev.title)}</div>
+                  <div className="gp-name f1x">{shortTitle(ev.title)}</div>
                   <div className="gp-loc dim">{ev.location}</div>
                 </div>
               </div>
@@ -575,6 +669,8 @@ function F1Card({ sport, tz }) {
         {sport.subjects.map((s) => (
           <div key={s.id}><Driver s={s} tz={tz} /><Stale s={s} L={L} /></div>
         ))}
+        {sport.tables && <F1Table kind="last_race" table={sport.tables.last_race} stale={sport.tables_stale} />}
+        {sport.tables && <F1Table kind="standings" table={sport.tables.standings} stale={sport.tables_stale} />}
       </div>
     </div>
   );

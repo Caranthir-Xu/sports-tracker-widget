@@ -222,3 +222,50 @@ def fetch_subject(subj):
     last = _event(races[-1], number) if races else None
     return {"ranking": _ranking(subj["jolpica_id"]), "next": nxt, "last": last,
             "profile": _profile(number)}
+
+
+def _team_colours():
+    """Driver code -> '#RRGGBB' from the latest session's driver list."""
+    return {d["name_acronym"]: f"#{d['team_colour']}"
+            for d in get_json(f"{OPENF1}/drivers?session_key=latest") if d.get("team_colour")}
+
+
+def fetch_sport(sport_cfg):
+    """Sport-level tables shared by all drivers: last race classification, driver standings."""
+    followed = {s["jolpica_id"] for s in sport_cfg["subjects"]}
+    colours = _team_colours()
+
+    def row(pos, d, team, value, extra):
+        return {"pos": pos, "code": d["code"], "name": f"{d['givenName']} {d['familyName']}",
+                "team": team, "color": colours.get(d["code"]), "value": value, "extra": extra,
+                "self": d["driverId"] in followed}
+
+    race = get_json(f"{JOLPICA}/current/last/results.json")["MRData"]["RaceTable"]["Races"][0]
+    lead_laps = int(race["Results"][0]["laps"])
+
+    def gap(r):
+        # Lapped cars' times are measured a lap down, so show laps like the official classification.
+        if r["status"] == "Finished":
+            return r["Time"]["time"]
+        down = lead_laps - int(r["laps"])
+        if r["status"] == "Lapped" or r["status"].startswith("+"):
+            return f"+{down} Lap{'s' if down > 1 else ''}"
+        return "DNF" if r["status"] == "Retired" else r["status"]
+
+    results = [row(int(r["position"]), r["Driver"], r["Constructor"]["name"], gap(r),
+                   f"+{r['points']}" if float(r["points"]) else "")
+               for r in race["Results"]]
+
+    lists = get_json(f"{JOLPICA}/current/driverStandings.json")["MRData"]["StandingsTable"]["StandingsLists"]
+    standings = [row(int(d["position"]), d["Driver"], d["Constructors"][-1]["name"],
+                     f"{float(d['points']):g}", f"{d['wins']}W" if int(d["wins"]) else "")
+                 for d in (lists[0]["DriverStandings"] if lists else [])]
+
+    nxt = get_json(f"{JOLPICA}/current/next.json")["MRData"]["RaceTable"]["Races"]
+    return {"next_round": int(nxt[0]["round"]) if nxt else None, "tables": {
+        "last_race": {"title": race["raceName"], "subtitle": f"Round {race['round']} · {race['date']}",
+                      "rows": results},
+        "standings": {"title": "Driver standings",
+                      "subtitle": f"After round {lists[0]['round']}" if lists else None,
+                      "rows": standings},
+    }}

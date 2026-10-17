@@ -8,7 +8,8 @@ client (Übersicht now, iOS Scriptable later) only reads `data.json`.
 - `config.yaml` — followed subjects, display order, timezone
 - `fetch.py` — runs every provider, stale fallback, atomic write of `data.json`
 - `providers/<sport>.py` — one module per sport, each exposes
-  `fetch_subject(subject_cfg) -> {"ranking", "next", "last"}` and raises on failure
+  `fetch_subject(subject_cfg) -> {"ranking", "next", "last"}` and raises on failure;
+  optionally `fetch_sport(sport_cfg) -> dict` merged into the sport entry (F1: `tables`)
 - `providers/common.py` — `get_json` (urllib, cached per run), `event()`/`result()` builders
 - `widget/sports-tracker.widget/index.jsx` — Übersicht widget (display only)
 - `launchd/install.sh` + `com.adaxu.sports-tracker.plist.template` — scheduled job
@@ -90,6 +91,12 @@ Event = { title, subtitle, start, time_precision ("exact"|"date"),
           competitors: [ Competitor ] | null,                       # head-to-head only
           sessions: [ { name, start, status, result } ] | null }   # F1 weekend only
 
+Sport entry may also have (F1 only today):
+  tables = { last_race: Table, standings: Table }, tables_stale (bool; last good copy kept on failure)
+  next_round (int, F1 round number of the next race)
+  Table = { title, subtitle, rows: [ { pos, code, name, team, color, value, extra, self } ] }
+  # last_race value = winner time / gap / "+N Lap(s)" / "DNF", extra = "+pts"; standings value = points, extra = "NW"
+
 Competitor = { name, short, name_zh, logo, score, games: [int] | null, winner, self,
                record, form }   # record/form: NHL pre-game only ("4-3-0", "L10 4-3-0 · W1")
 ranking also has: note (string, e.g. NHL playoff picture / F1 gap), change (int, BWF weekly
@@ -143,7 +150,16 @@ Event also has:
   started < 24 h ago (date-only: date == today in `timezone`) with an amber tint +
   "Last 24h"/"Today"/"Live" pill; title shortening ("Grand Prix" → "GP", drop year,
   drop leading all-caps sponsor words) is display-only.
-- F1 driver row: car number (white), code + team, newest 3 session results of the current
+- F1 tables: clicking a driver's LAST RACE / STANDINGS stat toggles the full Jolpica
+  classification / standings below the driver rows (one open at a time; followed drivers highlighted).
+  Lapped cars' Jolpica times are measured a lap down, so they're shown as "+N Lap(s)".
+- F1 visual style ("racing"): `.f1x` = Helvetica Neue Condensed Black + italic for headings
+  and numbers; chequered strip on the card top (conic-gradient); carbon weave layered over the
+  team-colour gradient; ROUND n chip from sport `next_round` (Jolpica current/next.json);
+  start lights next to the countdown (lit = 5 − whole days left, all off + "LIGHTS OUT" when
+  live); slanted (skewX −12°) session chips and team-colour number plates; tables styled as a
+  timing tower (zebra rows, monospace times, team-colour edge on followed drivers).
+- F1 driver row: car number (on plate), code + team, newest 3 session results of the current
   weekend (Q/SPR/SQ/FP), then LAST RACE and STANDINGS stat columns. No headshots (data still has `image`).
 - Widget layout: `F1Card` (Box Box style: flag, countdown, session strip, driver rows
   in team colour) for sport id `f1`; every other sport uses the generic `H2HCard`

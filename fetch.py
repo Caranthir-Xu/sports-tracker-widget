@@ -20,12 +20,13 @@ SCHEMA_VERSION = 1
 
 
 def load_previous(path):
-    """Map subject id -> subject from the last data.json, if readable."""
+    """(subject id -> subject, sport id -> sport) from the last data.json, if readable."""
     try:
         data = json.loads(path.read_text())
     except (OSError, ValueError):
-        return {}
-    return {s["id"]: s for sport in data.get("sports", []) for s in sport["subjects"]}
+        return {}, {}
+    sports = data.get("sports", [])
+    return {s["id"]: s for sport in sports for s in sport["subjects"]}, {sp["id"]: sp for sp in sports}
 
 
 PROFILE_KEYS = ("team", "color", "image", "badge")
@@ -57,7 +58,7 @@ def summarize(subj):
 def main():
     config = yaml.safe_load((ROOT / "config.yaml").read_text())
     out_path = ROOT / config.get("output", "data.json")
-    previous = load_previous(out_path)
+    previous, previous_sports = load_previous(out_path)
     failures = 0
 
     sports = []
@@ -86,7 +87,19 @@ def main():
             subjects.append(subj)
             if sys.stdout.isatty():  # full summary in terminal, one line in launchd log
                 print(summarize(subj))
-        sports.append({"id": sport["id"], "name": sport["name"], "subjects": subjects})
+        entry = {"id": sport["id"], "name": sport["name"], "subjects": subjects}
+        # Optional sport-level data (e.g. F1 tables); on failure keep the last good copy.
+        try:
+            provider = importlib.import_module(f"providers.{sport['provider']}")
+            if hasattr(provider, "fetch_sport"):
+                entry.update(provider.fetch_sport(sport), tables_stale=False)
+        except Exception:
+            failures += 1
+            traceback.print_exc(file=sys.stderr)
+            old = previous_sports.get(sport["id"], {})
+            if old.get("tables"):
+                entry.update(tables=old["tables"], tables_stale=True, next_round=old.get("next_round"))
+        sports.append(entry)
 
     data = {
         "schema_version": SCHEMA_VERSION,
