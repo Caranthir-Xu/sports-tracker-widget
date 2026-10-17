@@ -18,6 +18,36 @@ athletes and teams you follow: F1 drivers, an NHL team and BWF badminton players
 The data layer and display layer are separate: `fetch.py` writes one generic `data.json`
 that any client can read (the Übersicht widget now, an iOS Scriptable widget later).
 
+## Screenshots
+
+**Collapsed view.** A sport with nothing live, nothing in the next 48 h and nothing finished in
+the last 24 h folds into one line (next event + countdown). Click ▸ to expand; drag any card
+header to move the widget.
+
+<img src="docs/images/overview-collapsed.png" width="420" alt="Collapsed cards">
+
+**F1.** Racing-style card in the two drivers' team colours: round number, circuit map split
+into S1/S2/S3, countdown with start lights (one more lights up each day; "LIGHTS OUT" when the
+session is live), the weekend's sessions, and a row per driver. Click **LAST RACE** for the full
+classification (lapped cars as "+N Lap") or **STANDINGS** for the driver table — your drivers
+are highlighted.
+
+![F1 card, last race classification, driver standings](docs/images/f1.png)
+
+**NHL.** Next game on an ice-sheet matchup with records and streaks, the playoff picture under
+the team name, and the last game as a scoreboard. Click the scoreboard for shots on goal, every
+goal by period (scorer, assists, PP/SH/EN, running score), the shootout and the three stars.
+During a game the matchup turns into a live score with period and clock, updated every minute.
+
+![NHL card and game detail](docs/images/nhl.png)
+
+**Badminton** (shown in Chinese). Court-green card: world ranking with weekly change, the next
+tournament with the draw path as a timeline — click "等N队" to list every possible opponent with
+their world ranking — and the last match on a court board. Click the board for duration, venue,
+a rally-by-rally score progression chart for each game, and match stats.
+
+![Badminton card, possible opponents, match detail with score chart](docs/images/badminton.png)
+
 ## Requirements
 
 - macOS with Python 3.9+ (the system `python3` is fine)
