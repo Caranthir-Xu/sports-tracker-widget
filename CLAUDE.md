@@ -127,8 +127,8 @@ Event also has:
   the full candidate list (DOM class toggle, not persisted).
 - BWF Chinese names: `providers/badminton_names_zh.yaml` (display name → common Chinese
   name, matching ignores case/space/dot/hyphen). Untranslated players fall back to English surname.
-- `extra_outputs` in config: best-effort copies of data.json (iCloud Drive
-  `SportsTracker/data.json` for the future Scriptable widget). launchd can write there.
+- `extra_outputs` in config (optional, none set): best-effort extra copies of data.json.
+  Not needed by the iOS widget, which fetches on the phone.
 - Widget auto-collapse: a card collapses to one line unless something is live, starts
   within 48 h, or finished in the last 24 h. The chevron toggles; the manual choice is kept
   (localStorage `sports-tracker-fold`) until the automatic state flips.

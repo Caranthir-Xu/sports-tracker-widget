@@ -54,7 +54,7 @@ macOS 的隐私保护不允许 launchd 定时任务读取"文稿"（Documents）
 
 ## 配置
 
-在 `config.yaml` 里设置关注对象、时区和额外的输出位置（例如在 iCloud 云盘保存一份 `data.json`）。
+在 `config.yaml` 里设置关注对象、时区和可选的额外输出位置（`extra_outputs`）。
 每个运动在 `providers/` 里有一个 provider，接口统一为
 `fetch_subject(subject) -> {ranking, next, last, profile}`。
 某个数据源失败时，对应项目会保留上一次成功的数据并标记为过期，不影响其他项目。

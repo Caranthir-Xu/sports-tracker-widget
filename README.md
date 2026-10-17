@@ -58,7 +58,7 @@ Edit `CONFIG` at the top of `Sports Tracker.js` to change who you follow.
 ## Configuration
 
 Edit `config.yaml` to choose who to follow, the timezone and extra output paths
-(e.g. an iCloud Drive copy of `data.json`). Each sport has a provider in `providers/`
+(optional `extra_outputs`). Each sport has a provider in `providers/`
 with the same interface: `fetch_subject(subject) -> {ranking, next, last, profile}`.
 If one source fails, that subject keeps its last good data and is marked stale.
 

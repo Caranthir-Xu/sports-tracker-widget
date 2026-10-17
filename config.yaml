@@ -1,9 +1,9 @@
 # Followed subjects. Order here = display order.
 timezone: America/Detroit
 output: data.json
-# Extra copies, e.g. iCloud Drive for the future iOS Scriptable widget.
-extra_outputs:
-  - ~/Library/Mobile Documents/com~apple~CloudDocs/SportsTracker/data.json
+# Optional extra copies of data.json, e.g.:
+# extra_outputs:
+#   - ~/Library/Mobile Documents/com~apple~CloudDocs/SportsTracker/data.json
 
 sports:
   - id: f1
