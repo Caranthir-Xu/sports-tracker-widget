@@ -1,0 +1,2 @@
+PyYAML>=6
+curl_cffi>=0.7

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Runs fetch.py every 30 minutes and at login. Template: install.sh replaces __RUNTIME__ -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.adaxu.sports-tracker</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__RUNTIME__/.venv/bin/python</string>
+    <string>__RUNTIME__/fetch.py</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__RUNTIME__</string>
+  <key>StartInterval</key>
+  <integer>1800</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>__RUNTIME__/logs/fetch.log</string>
+  <key>StandardErrorPath</key>
+  <string>__RUNTIME__/logs/fetch.err.log</string>
+</dict>
+</plist>

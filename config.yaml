@@ -1,0 +1,49 @@
+# Followed subjects. Order here = display order.
+timezone: America/Detroit
+output: data.json
+# Extra copies, e.g. iCloud Drive for the future iOS Scriptable widget.
+extra_outputs:
+  - ~/Library/Mobile Documents/com~apple~CloudDocs/SportsTracker/data.json
+
+sports:
+  - id: f1
+    name: F1
+    provider: f1
+    subjects:
+      - id: f1-leclerc
+        name: Charles Leclerc
+        short: LEC
+        number: 16              # OpenF1 driver_number
+        jolpica_id: leclerc     # Jolpica driverId (standings)
+      - id: f1-verstappen
+        name: Max Verstappen
+        short: VER
+        number: 3
+        jolpica_id: max_verstappen
+
+  - id: nhl
+    name: NHL
+    provider: nhl
+    subjects:
+      - id: nhl-sjs
+        name: San Jose Sharks
+        short: SJS
+        abbrev: SJS
+        color: "#006D75"     # Sharks Pacific Teal; overrides provider colour
+
+  - id: badminton
+    name: 羽毛球
+    provider: badminton
+    subjects:
+      - id: bwf-liang-wang
+        name: 梁伟铿 / 王昶
+        short: 梁伟铿 / 王昶
+        event: MD
+        player_id: 90531        # BWF id of either player
+        search: LIANG Wei Keng  # BWF display name, used for ranking search
+      - id: bwf-chen-yufei
+        name: 陈雨菲
+        short: 陈雨菲
+        event: WS
+        player_id: 78778
+        search: CHEN Yu Fei
