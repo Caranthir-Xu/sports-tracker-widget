@@ -411,6 +411,27 @@ async function nhlSubject(subj) {
   };
 }
 
+// Division standings + conference wild-card race (= Python nhl.fetch_sport). Detail page only.
+async function nhlSport(sportCfg) {
+  if (LITE) return {};
+  const team = sportCfg.subjects[0].abbrev;
+  const me = await nhlTeam(team);
+  if (!me) return {};
+  const rows = await nhlStandings();
+  const row = (t, pos, cut) => ({
+    pos, code: t.teamAbbrev.default, name: t.teamCommonName.default,
+    logo: (t.teamLogo || "").replace("_light.svg", "_dark.svg") || null, team: null, color: null,
+    value: String(t.points), extra: `${t.wins}-${t.losses}-${t.otLosses}`, gp: t.gamesPlayed,
+    self: t.teamAbbrev.default === team, cut,
+  });
+  const div = rows.filter((t) => t.divisionName === me.divisionName).sort((a, b) => a.divisionSequence - b.divisionSequence);
+  const wc = rows.filter((t) => t.conferenceName === me.conferenceName && t.wildcardSequence).sort((a, b) => a.wildcardSequence - b.wildcardSequence);
+  return { tables: {
+    division: { title: `${me.divisionName} Division`, subtitle: "Top 3 make the playoffs", rows: div.map((t) => row(t, t.divisionSequence, t.divisionSequence === 3)) },
+    wildcard: { title: `${me.conferenceName} Wild Card`, subtitle: "Top 2 make the playoffs", rows: wc.map((t) => row(t, t.wildcardSequence, t.wildcardSequence === 2)) },
+  } };
+}
+
 // =====================================================================
 // Badminton — BWF internal API (no Cloudflare block for Apple's URL stack)
 // =====================================================================
@@ -655,7 +676,7 @@ async function badmintonSubject(subj) {
 // =====================================================================
 
 const PROVIDERS = { f1: f1Subject, nhl: nhlSubject, badminton: badmintonSubject };
-const SPORT_PROVIDERS = { f1: f1Sport }; // optional sport-level data, like fetch_sport() in Python
+const SPORT_PROVIDERS = { f1: f1Sport, nhl: nhlSport }; // optional sport-level data, like fetch_sport() in Python
 const PROFILE_KEYS = ["team", "color", "image", "badge", "country"];
 
 function withTimeout(p, ms) {

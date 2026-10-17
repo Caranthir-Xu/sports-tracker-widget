@@ -223,3 +223,34 @@ def refresh_live(subj, current):
     ev["live"] = _live_state(d)
     ev["detail"] = _detail_from_landing(d)
     return {"next": ev}
+
+
+# ---------- sport-level tables (fetch.py merges these into the sport entry) ----------
+
+def _standing_row(t, team, pos):
+    return {
+        "pos": pos, "code": t["teamAbbrev"]["default"], "name": t["teamCommonName"]["default"],
+        "logo": (t.get("teamLogo") or "").replace("_light.svg", "_dark.svg") or None,  # dark-background variant
+        "team": None, "color": None,
+        "value": str(t["points"]), "extra": f"{t['wins']}-{t['losses']}-{t['otLosses']}",
+        "gp": t["gamesPlayed"], "self": t["teamAbbrev"]["default"] == team,
+    }
+
+
+def fetch_sport(sport_cfg):
+    """Division standings and the conference wild-card race for the followed team.
+    `cut` marks the last row inside a playoff spot (3rd in the division, WC2)."""
+    team = sport_cfg["subjects"][0]["abbrev"]
+    me = _team_row(team)
+    if not me:
+        return {}
+    rows = _standings()
+    div = sorted((t for t in rows if t["divisionName"] == me["divisionName"]), key=lambda t: t["divisionSequence"])
+    wc = sorted((t for t in rows if t["conferenceName"] == me["conferenceName"] and t["wildcardSequence"]),
+                key=lambda t: t["wildcardSequence"])
+    division = [dict(_standing_row(t, team, t["divisionSequence"]), cut=t["divisionSequence"] == 3) for t in div]
+    wild = [dict(_standing_row(t, team, t["wildcardSequence"]), cut=t["wildcardSequence"] == 2) for t in wc]
+    return {"tables": {
+        "division": {"title": f"{me['divisionName']} Division", "subtitle": "Top 3 make the playoffs", "rows": division},
+        "wildcard": {"title": f"{me['conferenceName']} Wild Card", "subtitle": "Top 2 make the playoffs", "rows": wild},
+    }}

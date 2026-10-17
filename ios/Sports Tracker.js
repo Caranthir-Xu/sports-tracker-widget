@@ -77,7 +77,7 @@ function countdown(ev, zh) {
     return n > 1 ? `in ${n} days` : n === 1 ? "tomorrow" : n === 0 ? "today" : "underway";
   }
   const ms = Date.parse(ev.start) - Date.now();
-  if (ms <= 0) return zh ? "已开始" : "started";
+  if (ms <= 0) return zh ? "即将开始" : "Starting soon"; // start time passed but not live yet
   const p = parts(ms);
   if (zh) return p.d ? `${p.d}天${p.h}小时后` : p.h ? `${p.h}小时${p.m}分后` : `${p.m}分钟后`;
   return p.d ? `in ${p.d}d ${p.h}h` : p.h ? `in ${p.h}h ${p.m}m` : `in ${p.m}m`;
@@ -759,7 +759,14 @@ function nhlHTML(sport) {
   const s = sport.subjects[0];
   const r = s.ranking, n = s.next, l = s.last;
   let h = `<section class="card nhl" style="background:linear-gradient(160deg,${hex2rgba(s.color || "#006d75", .8)},rgba(12,14,16,.8) 75%)"><h6>NHL</h6>`;
-  h += `<div class="subj"><div class="sh"><img src="${esc(s.image || "")}"><b>${esc(s.name)}</b>${r ? `<span class="rank">${esc(r.label)} <b>#${r.position}</b></span>` : ""}</div>${r && r.note ? `<div class="note">${esc(r.note)}</div>` : ""}`;
+  const tables = sport.tables || {};
+  h += `<div class="subj"><div class="sh"><img src="${esc(s.image || "")}"><b>${esc(s.name)}</b>${r ? `<span class="rank ${tables.division ? "tap" : ""}" ${tables.division ? `onclick="gd('nst')"` : ""}>${esc(r.label)} <b>#${r.position}</b></span>` : ""}</div>${r && r.note ? `<div class="note">${esc(r.note)}</div>` : ""}`;
+  // Standings (division + wild card), opened by tapping the rank.
+  if (tables.division) {
+    const tbl = (t) => `<div class="nsth"><b>${esc(t.title)}</b><span>${esc(t.subtitle || "")}</span></div><div class="nstc"><span class="p">#</span><span class="ab">TEAM</span><span class="nm"></span><span class="gpn">GP</span><span class="rec">W-L-OT</span><span class="pt">PTS</span></div>`
+      + t.rows.map((x) => `<div class="nstr ${x.self ? "me" : ""} ${x.cut ? "cut" : ""}"><span class="p">${x.pos}</span><img src="${esc(x.logo || "")}"><span class="ab">${esc(x.code)}</span><span class="nm">${esc(x.name)}</span><span class="gpn">${x.gp}</span><span class="rec">${esc(x.extra)}</span><span class="pt">${esc(x.value)}</span></div>`).join("");
+    h += `<div class="gd" id="nst">${tbl(tables.division)}${tables.wildcard ? tbl(tables.wildcard) : ""}</div>`;
+  }
   if (n && n.competitors) {
     const [a, b] = n.competitors, live = n.status === "live", lv = n.live || {};
     const team = (c) => { const st = streakOf(c); return `<div class="team"><img src="${esc(c.logo || "")}"><b>${esc(c.short)}</b>${c.record ? `<span>${esc(c.record)}</span>` : ""}${st ? `<em class="streak ${st.code}">${st.code}${st.n}</em>` : ""}</div>`; };
@@ -932,6 +939,13 @@ function detailHTML(data, focus) {
   .chart{display:block;width:100%;height:110px}.legend2{display:flex;gap:14px;font-size:11px;color:rgba(255,255,255,.6);margin:4px 0 6px}.legend2 i{display:inline-block;width:12px;height:2px;margin-right:5px;vertical-align:4px}
   .stat2{display:flex;align-items:center;gap:8px;height:24px;font-size:13px}.stat2 .lbl{width:92px;font-size:12px;color:rgba(255,255,255,.55)}.stat2 .v{width:26px;text-align:center;font-weight:700}.stat2 .gold{color:#ffd76a}
   .stat2 .bar{flex:1;height:6px;display:flex;gap:2px}.stat2 .bar b{display:block;height:100%;border-radius:3px}.nopts{font-size:12px;color:rgba(255,255,255,.4)}
+  .rank.tap b{border-bottom:1px dotted rgba(95,211,218,.7)}
+  .nsth{display:flex;justify-content:space-between;align-items:baseline;margin:10px 0 4px}.nsth:first-child{margin-top:0}.nsth b{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.8)}.nsth span{font-size:10px;color:rgba(255,255,255,.4)}
+  .nstc{display:flex;gap:7px;padding:0 7px;font-size:9px;font-weight:700;color:rgba(255,255,255,.35)}.nstc .ab{width:54px}
+  .nstr{display:flex;align-items:center;gap:7px;height:26px;padding:0 7px;border-radius:7px;font-size:13px}.nstr img{width:20px;height:20px;object-fit:contain}
+  .nstr.me{background:rgba(95,211,218,.16);box-shadow:inset 3px 0 0 #5fd3da;font-weight:700}.nstr.cut{box-shadow:0 1px 0 rgba(255,69,58,.6);margin-bottom:2px}.nstr.me.cut{box-shadow:inset 3px 0 0 #5fd3da,0 1px 0 rgba(255,69,58,.6)}
+  .nstr .p,.nstc .p{width:16px;text-align:right;color:rgba(255,255,255,.5)}.nstr .ab{width:34px;font-weight:700}.nstr .nm,.nstc .nm{flex:1;min-width:0;color:rgba(255,255,255,.55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .nstr .gpn,.nstc .gpn{width:22px;text-align:right;color:rgba(255,255,255,.5)}.nstr .rec,.nstc .rec{width:50px;text-align:right;color:rgba(255,255,255,.6)}.nstr .pt,.nstc .pt{width:26px;text-align:right;font-weight:700}
   .stale{margin-top:6px;font-size:11px;color:#ffb340}.foot{text-align:center;font-size:11px;color:rgba(255,255,255,.35)}`;
   const order = data.sports.slice().sort((a, b) => (a.id === focus ? -1 : b.id === focus ? 1 : 0));
   const body = order.map((sp) => (sp.id === "f1" ? f1HTML(sp) : sp.id === "nhl" ? nhlHTML(sp) : h2hHTML(sp))).join("");

@@ -303,6 +303,31 @@ export const className = `
   .stat2 .bar i { display: block; height: 100%; border-radius: 3px; }
   .nopts { font-size: 10px; color: rgba(255, 255, 255, 0.4); }
 
+  /* ---- NHL standings (division + wild card), opened from the rank ---- */
+  .rank.click { cursor: pointer; padding: 1px 5px; margin: -1px -5px; border-radius: 6px; }
+  .rank.click:hover { background: rgba(255, 255, 255, 0.1); }
+  .rank.click b { border-bottom: 1px dotted rgba(95, 211, 218, 0.6); }
+  .nst { display: none; margin: 2px 0 8px; padding: 8px 9px 6px; border-radius: 12px; background: rgba(0, 0, 0, 0.28); }
+  .nst.open { display: block; }
+  .nst-h { display: flex; justify-content: space-between; align-items: baseline; margin: 8px 0 3px; }
+  .nst-h:first-child { margin-top: 0; }
+  .nst-h b { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255, 255, 255, 0.75); }
+  .nst-h span { font-size: 9px; color: rgba(255, 255, 255, 0.4); }
+  .nst-cols { display: flex; gap: 6px; padding: 0 6px; font-size: 8px; font-weight: 700; letter-spacing: 0.06em; color: rgba(255, 255, 255, 0.35); }
+  .nst-r { display: flex; align-items: center; gap: 6px; height: 19px; padding: 0 6px; border-radius: 6px; font-size: 11px; }
+  .nst-r.me { background: rgba(95, 211, 218, 0.16); box-shadow: inset 2px 0 0 #5fd3da; font-weight: 700; }
+  .nst-r.cut { box-shadow: 0 1px 0 rgba(255, 69, 58, 0.55); border-radius: 6px 6px 0 0; margin-bottom: 2px; }
+  .nst-r.me.cut { box-shadow: inset 2px 0 0 #5fd3da, 0 1px 0 rgba(255, 69, 58, 0.55); }
+  .nst-r .p, .nst-cols .p { width: 14px; text-align: right; color: rgba(255, 255, 255, 0.5); }
+  .nst-r img { width: 16px; height: 16px; object-fit: contain; }
+  .nst-r .ab { width: 30px; font-weight: 700; }
+  .nst-r .nm, .nst-cols .nm { flex: 1; min-width: 0; color: rgba(255, 255, 255, 0.55); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nst-r.me .nm { color: #fff; }
+  .nst-r .gp, .nst-cols .gp { width: 18px; text-align: right; color: rgba(255, 255, 255, 0.5); }
+  .nst-r .rec, .nst-cols .rec { width: 42px; text-align: right; color: rgba(255, 255, 255, 0.6); }
+  .nst-r .pt, .nst-cols .pt { width: 20px; text-align: right; font-weight: 700; }
+  .nst-cols .ab { width: 46px; }
+
   /* ---- San Jose Sharks theme: teal card, light-teal accents ---- */
   .card.nhl .mid .sm.dim, .card.nhl .rank b, .card.nhl .card-h .accent, .card.nhl .note { color: ${TEAL}; }
   .card.nhl .matchup { box-shadow: inset 0 -2px 0 ${TEAL}; }
@@ -455,7 +480,7 @@ function Summary({ sport, tz, L, zh }) {
 const T = {
   en: {
     today: "Today", tomorrow: "Tomorrow", yesterday: "Yesterday", locale: "en-US",
-    live: "Live", liveNow: "Live now", recent: "Last 24h", started: "started", underway: "underway",
+    live: "Live", liveNow: "Live now", recent: "Last 24h", started: "Starting soon", underway: "underway",
     next: "Next", last: "Last", noEntries: "No upcoming entries",
     inDays: (d) => `in ${d} days`, inDH: (d, h) => `in ${d}d ${h}h`, inHM: (h, m) => `in ${h}h ${m}m`, inM: (m) => `in ${m}m`,
     stale: (a) => `⚠ Couldn't refresh · data from ${a}`,
@@ -463,7 +488,7 @@ const T = {
   },
   zh: {
     today: "今天", tomorrow: "明天", yesterday: "昨天", locale: "zh-CN",
-    live: "进行中", liveNow: "进行中", recent: "24小时内", started: "已开始", underway: "进行中",
+    live: "进行中", liveNow: "进行中", recent: "24小时内", started: "即将开始", underway: "进行中",
     next: "下一场", last: "最近一场", noEntries: "暂无报名赛事",
     inDays: (d) => `${d} 天后`, inDH: (d, h) => `${d}天${h}小时后`, inHM: (h, m) => `${h}小时${m}分后`, inM: (m) => `${m}分钟后`,
     stale: (a) => `⚠ 更新失败 · 数据来自${a}`,
@@ -531,7 +556,7 @@ function countdown(ev, tz, L) {
     return days > 1 ? L.inDays(days) : days === 1 ? L.tomorrow : days === 0 ? L.today : L.underway;
   }
   const ms = Date.parse(ev.start) - Date.now();
-  if (ms <= 0) return L.started;
+  if (ms <= 0) return L.started; // start time passed but not live yet (pre-game / delay)
   const p = parts(ms);
   return p.d ? L.inDH(p.d, p.h) : p.h ? L.inHM(p.h, p.m) : L.inM(p.m);
 }
@@ -984,6 +1009,39 @@ function GameDetail({ ev }) {
   );
 }
 
+// NHL standings panel: division + conference wild card; red rule = last playoff spot.
+function toggleStandings(e) {
+  const panel = e.currentTarget.closest(".subj").querySelector(".nst");
+  if (panel) panel.classList.toggle("open");
+}
+
+function NHLStandings({ tables }) {
+  if (!tables || !tables.division) return null;
+  const Table = ({ t }) => (
+    <div>
+      <div className="nst-h"><b>{t.title}</b><span>{t.subtitle}</span></div>
+      <div className="nst-cols"><span className="p">#</span><span className="ab">TEAM</span><span className="nm" /><span className="gp">GP</span><span className="rec">W-L-OT</span><span className="pt">PTS</span></div>
+      {t.rows.map((r) => (
+        <div className={`nst-r ${r.self ? "me" : ""} ${r.cut ? "cut" : ""}`} key={r.code}>
+          <span className="p">{r.pos}</span>
+          <Img src={r.logo} />
+          <span className="ab">{r.code}</span>
+          <span className="nm">{r.name}</span>
+          <span className="gp">{r.gp}</span>
+          <span className="rec">{r.extra}</span>
+          <span className="pt">{r.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+  return (
+    <div className="nst">
+      <Table t={tables.division} />
+      {tables.wildcard && <Table t={tables.wildcard} />}
+    </div>
+  );
+}
+
 // ---------- badminton extras ----------
 
 const Shuttle = () => (
@@ -1179,8 +1237,9 @@ const Change = ({ n }) =>
   : n < 0 ? <span className="chg down">▼{-n}</span>
   : <span className="chg same">–</span>;
 
-function Subject({ s, tz, L, zh, sportId }) {
+function Subject({ s, tz, L, zh, sportId, tables }) {
   const nhl = sportId === "nhl";
+  const canStand = nhl && tables && tables.division;
   const r = s.ranking;
   const { next, last } = s;
   const hasGames = last && last.competitors && last.competitors.some((c) => c.games);
@@ -1193,9 +1252,12 @@ function Subject({ s, tz, L, zh, sportId }) {
       <div className="subj-h">
         <Img src={s.image} cls={`logo ${isFlag(s.image) ? "flag" : ""}`} />
         <span className="nm ellipsis">{s.name}</span>
-        {r && <span className="rank">{zh ? ZH_EVENTS[r.label] || r.label : r.label} <b>#{r.position}</b><Change n={r.change} /></span>}
+        {r && <span className={`rank ${canStand ? "click" : ""}`} onClick={canStand ? toggleStandings : null}>
+          {zh ? ZH_EVENTS[r.label] || r.label : r.label} <b>#{r.position}</b><Change n={r.change} />
+        </span>}
       </div>
       {r && r.note && <div className="note">{r.note}</div>}
+      {canStand && <NHLStandings tables={tables} />}
 
       {next && next.competitors ? (
         <div>
@@ -1258,7 +1320,7 @@ function H2HCard({ sport, tz }) {
       </Header>
       <Summary sport={sport} tz={tz} L={L} zh={zh} />
       <div className="body">
-        {sport.subjects.map((s) => <Subject s={s} tz={tz} L={L} zh={zh} sportId={sport.id} key={s.id} />)}
+        {sport.subjects.map((s) => <Subject s={s} tz={tz} L={L} zh={zh} sportId={sport.id} tables={sport.tables} key={s.id} />)}
       </div>
     </div>
   );

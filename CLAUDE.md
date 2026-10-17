@@ -9,7 +9,7 @@ client (Übersicht now, iOS Scriptable later) only reads `data.json`.
 - `fetch.py` — runs every provider, stale fallback, atomic write of `data.json`
 - `providers/<sport>.py` — one module per sport, each exposes
   `fetch_subject(subject_cfg) -> {"ranking", "next", "last"}` and raises on failure;
-  optionally `fetch_sport(sport_cfg) -> dict` merged into the sport entry (F1: `tables`)
+  optionally `fetch_sport(sport_cfg) -> dict` merged into the sport entry (F1, NHL: `tables`)
 - `providers/common.py` — `get_json` (urllib, cached per run), `event()`/`result()` builders
 - `widget/sports-tracker.widget/index.jsx` — Übersicht widget (display only)
 - `launchd/install.sh` + `*.plist.template` — scheduled jobs: `com.adaxu.sports-tracker`
@@ -49,8 +49,8 @@ runs from a runtime copy:
   `node ios/dev/test.js` runs `Sports Data.js` with Scriptable shims (BWF via `cffi.py`, since
   Node is blocked) → `ios/dev/out/data.json`, compare with the Mac's data.json;
   `node ios/dev/widgetmock.js` renders every widget size + the detail page to `ios/dev/out/www/`.
-  NHL detail/live (`nhlDetail`, `nhlLive`) and badminton match detail (`dayRow`, `matchDetail`) are
-  ported to iOS. iOS widgets: NHL matchup has a DrawContext rink as stack `backgroundImage`, last game
+  NHL detail/live (`nhlDetail`, `nhlLive`), NHL standings tables (`nhlSport`, detail page: tap the
+  rank) and badminton match detail (`dayRow`, `matchDetail`) are ported to iOS. iOS widgets: NHL matchup has a DrawContext rink as stack `backgroundImage`, last game
   is a scoreboard capsule; badminton uses `COURT_GREEN` + gold ranks. The detail page mirrors the
   desktop NHL card and badminton card (timeline path, court board, `scoreChartSVG`, stats), toggled by `gd(id)`.
 - Widget runs call `load(CONFIG, { lite: true })`: `LITE` skips detail-only data (NHL landing,
@@ -115,11 +115,13 @@ Event = { title, subtitle, start, time_precision ("exact"|"date"),
           competitors: [ Competitor ] | null,                       # head-to-head only
           sessions: [ { name, start, status, result } ] | null }   # F1 weekend only
 
-Sport entry may also have (F1 only today):
+Sport entry may also have (F1 and NHL):
   tables = { last_race: Table, standings: Table }, tables_stale (bool; last good copy kept on failure)
   next_round (int, F1 round number of the next race)
   Table = { title, subtitle, rows: [ { pos, code, name, team, color, value, extra, self } ] }
-  # last_race value = winner time / gap / "+N Lap(s)" / "DNF", extra = "+pts"; standings value = points, extra = "NW"
+  # F1 last_race value = winner time / gap / "+N Lap(s)" / "DNF", extra = "+pts"; standings value = points, extra = "NW"
+  # NHL tables = { division, wildcard }: rows add logo, gp, cut (last playoff spot: 3rd in division / WC2);
+  #   value = points, extra = "W-L-OT". Built from the same standings/now call (no extra request).
 
 Competitor = { name, short, name_zh, logo, score, games: [int] | null, winner, self,
                record, form }   # record/form: NHL pre-game only ("4-3-0", "L10 4-3-0 · W1")
@@ -176,6 +178,8 @@ Event also has:
 - `get_json` / BWF `_get` are `lru_cache`d, so shared calls (standings, calendar) run once per run.
 - `data.json` is written via temp file + rename; readers never see partial JSON.
 - A full run takes ~15 s (BWF is the slow part).
+- A scheduled event whose start time has passed but is not live yet (NHL "PRE", delays) shows
+  "Starting soon" / "即将开始", not "started". The live job ignores PRE and updates once LIVE.
 - Widget: refreshes every 60 s (just `cat`), highlights events that are live or
   started < 24 h ago (date-only: date == today in `timezone`) with an amber tint +
   "Last 24h"/"Today"/"Live" pill; title shortening ("Grand Prix" → "GP", drop year,
@@ -206,7 +210,9 @@ Event also has:
   only). Last game = symmetric scoreboard capsule (away · FINAL[/OT/SO] · home, loser dimmed);
   click toggles `GameDetail`: two-sided SOG bar, goals by period (time chip, scorer (total),
   PP/SH/EN tags, assists, running score with the scoring side bold), shootout dots, three
-  stars as three cards. Only the NHL uses these (`Subject` gets `sportId`).
+  stars as three cards. Only the NHL uses these (`Subject` gets `sportId`). Clicking the
+  "Pacific #5" rank toggles `NHLStandings` (division + wild card tables, followed team
+  highlighted, red rule under the last playoff spot).
 - Übersicht must be running for the desktop widget: it lives in /Applications and needs
   "Launch Übersicht when I login" ticked (the user's setting). The launchd data job is separate.
 - Badminton card: court-green gradient, shuttlecock icon in the header, draw path as a vertical
