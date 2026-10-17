@@ -192,6 +192,117 @@ export const className = `
   .line .t { flex: 1; min-width: 0; }
   .err { padding: 12px; font-size: 12px; color: ${LIVE_RED}; }
 
+  /* ---- NHL: ice-sheet matchup, scoreboard capsule, game detail ---- */
+  .matchup.rink {
+    position: relative; overflow: hidden; border-radius: 16px; padding: 10px 10px 9px;
+    background: linear-gradient(180deg, rgba(225, 245, 255, 0.09), rgba(225, 245, 255, 0.02));
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.13);
+  }
+  .matchup.rink > * { position: relative; z-index: 1; }
+  .matchup.rink .rink-lines { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; }
+  .matchup.rink .team img { width: 38px; height: 38px; }
+  .matchup.rink .team .ab { font-size: 13px; }
+  .matchup.rink .team .rec { font-size: 10px; margin-top: 1px; }
+  .streak { display: inline-block; margin-top: 3px; padding: 0 5px; border-radius: 4px; font-size: 9px; font-weight: 800; }
+  .streak.W { background: rgba(48, 209, 88, 0.18); color: #30d158; }
+  .streak.L, .streak.OT { background: rgba(255, 69, 58, 0.18); color: #ff6961; }
+  .matchup.rink .mid .big { font-size: 22px; font-weight: 600; }
+  .matchup.live { cursor: pointer; }
+  .live-score { font-size: 28px; font-weight: 700; letter-spacing: 0.02em; }
+  .live-score i { font-style: normal; color: rgba(255, 255, 255, 0.35); margin: 0 6px; }
+  .live-state { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 700; color: #ff6961; }
+  .live-state .dot { width: 6px; height: 6px; border-radius: 50%; background: #ff453a; box-shadow: 0 0 0 3px rgba(255, 69, 58, 0.25); }
+  .live-sog { font-size: 9px; color: rgba(255, 255, 255, 0.45); margin-top: 2px; }
+  .sb {
+    display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px; cursor: pointer;
+    background: rgba(0, 0, 0, 0.3); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.1);
+  }
+  .sb:hover { background: rgba(0, 0, 0, 0.38); }
+  .sb img { width: 22px; height: 22px; object-fit: contain; }
+  .sb .side { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+  .sb .side.home { justify-content: flex-end; }
+  .sb .ab { font-size: 12px; font-weight: 700; letter-spacing: 0.03em; }
+  .sb .pts { font-size: 22px; font-weight: 700; min-width: 16px; text-align: center; }
+  .sb .lose { opacity: 0.42; }
+  .sb .mid { flex: none; text-align: center; min-width: 58px; }
+  .sb .fin { display: inline-block; padding: 1px 6px; border-radius: 5px; font-size: 9px; font-weight: 800; letter-spacing: 0.06em; background: rgba(255, 255, 255, 0.12); }
+  .sb .when { font-size: 9px; color: rgba(255, 255, 255, 0.45); margin-top: 2px; }
+  .sb .tog { font-size: 9px; color: rgba(255, 255, 255, 0.4); transition: transform 0.2s; }
+  .gd { display: none; margin-top: 6px; padding: 9px 10px 8px; border-radius: 12px; background: rgba(0, 0, 0, 0.26); }
+  .gd.open { display: block; }
+  .gd-h { display: flex; align-items: center; gap: 8px; margin: 9px 0 4px; font-size: 9px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 255, 255, 0.5); }
+  .gd-h::after { content: ""; flex: 1; height: 0.5px; background: rgba(255, 255, 255, 0.12); }
+  .gd-h:first-child { margin-top: 0; }
+  .gd-h em { font-style: normal; font-weight: 400; letter-spacing: 0; text-transform: none; color: rgba(255, 255, 255, 0.32); }
+  .sog { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; }
+  .sog .bar { flex: 1; height: 6px; border-radius: 3px; overflow: hidden; display: flex; gap: 2px; }
+  .sog .bar i { display: block; height: 100%; border-radius: 3px; }
+  .goal { display: flex; align-items: flex-start; gap: 7px; padding: 4px 0; }
+  .goal .t { flex: none; width: 36px; text-align: center; padding: 1px 0; border-radius: 5px; font-size: 10px; line-height: 14px; background: rgba(255, 255, 255, 0.07); color: rgba(255, 255, 255, 0.7); }
+  .goal img { width: 16px; height: 16px; margin-top: 0; object-fit: contain; }
+  .goal .who { flex: 1; min-width: 0; font-size: 12px; line-height: 16px; }
+  .goal .who b { font-weight: 600; }
+  .goal .who i { font-style: normal; color: rgba(255, 255, 255, 0.4); }
+  .goal .ast { font-size: 10px; line-height: 13px; color: rgba(255, 255, 255, 0.42); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .goal .tag { font-size: 8px; font-weight: 800; padding: 1px 4px; border-radius: 3px; margin-left: 5px; vertical-align: 1px; background: rgba(255, 179, 64, 0.18); color: #ffb340; }
+  .goal .sc { font-size: 12px; line-height: 16px; color: rgba(255, 255, 255, 0.45); }
+  .goal .sc b { color: #fff; }
+  .so { display: flex; align-items: center; gap: 7px; height: 20px; font-size: 11px; font-weight: 700; }
+  .so img { width: 16px; height: 16px; object-fit: contain; }
+  .so .att { display: flex; gap: 5px; margin-left: 4px; }
+  .so .att i { width: 9px; height: 9px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.3); }
+  .so .att i.goal-hit { background: #30d158; box-shadow: none; }
+  .so-win { font-size: 10px; color: rgba(255, 255, 255, 0.45); margin-top: 2px; }
+  .stars { display: flex; gap: 6px; }
+  .stars > div { flex: 1; min-width: 0; text-align: center; padding: 6px 4px 5px; border-radius: 9px; background: rgba(255, 255, 255, 0.05); }
+  .stars .st { color: #ffd23f; font-size: 9px; letter-spacing: 1px; }
+  .stars img { width: 18px; height: 18px; margin: 3px auto 2px; object-fit: contain; }
+  .stars .nm { font-size: 10px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stars .ln { font-size: 9px; color: rgba(255, 255, 255, 0.5); margin-top: 1px; }
+
+  /* ---- Badminton: court-green card, bracket timeline, court board, score chart ---- */
+  .card.badminton {
+    background: linear-gradient(165deg, rgba(14, 112, 82, 0.72) 0%, rgba(8, 44, 34, 0.74) 60%, rgba(10, 18, 16, 0.74) 100%);
+  }
+  .card.badminton .card-h { color: rgba(225, 255, 240, 0.7); }
+  .shuttle { width: 13px; height: 13px; margin-right: 5px; vertical-align: -2px; }
+  .card.badminton .rank b { color: #ffd76a; font-size: 14px; }
+  .evt { display: inline-block; margin-right: 4px; padding: 0 5px; border-radius: 4px; font-size: 9px; font-weight: 700; background: rgba(255, 255, 255, 0.12); color: #fff; letter-spacing: 0; }
+  .card.badminton .path { position: relative; padding: 2px 8px 2px 18px; }
+  .card.badminton .path::before { content: ""; position: absolute; left: 11px; top: 9px; bottom: 9px; width: 1.5px; background: rgba(255, 255, 255, 0.18); }
+  .card.badminton .path-r { position: relative; }
+  .card.badminton .path-r::before {
+    content: ""; position: absolute; left: -10px; top: 6px; width: 6px; height: 6px; border-radius: 50%;
+    background: #ffd76a; box-shadow: 0 0 0 2px rgba(10, 40, 30, 0.9);
+  }
+  .card.badminton .path-r.maybe::before { background: transparent; box-shadow: inset 0 0 0 1.5px rgba(255, 215, 106, 0.7), 0 0 0 2px rgba(10, 40, 30, 0.9); }
+  .card.badminton .cands { margin-left: 40px; }
+  .court {
+    position: relative; overflow: hidden; cursor: pointer; padding: 6px 9px; border-radius: 10px;
+    background: rgba(4, 60, 44, 0.55); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+  }
+  .court:hover { box-shadow: inset 0 0 0 1px rgba(255, 215, 106, 0.55); }
+  .court > *:not(svg) { position: relative; z-index: 1; }
+  .court .court-lines { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; }
+  .court .board-r .g.w { color: #ffd76a; }
+  .court .tog { position: absolute; right: 6px; bottom: 3px; font-size: 8px; color: rgba(255, 255, 255, 0.4); }
+  .bd { display: none; margin-top: 6px; padding: 9px 10px 8px; border-radius: 12px; background: rgba(0, 0, 0, 0.28); }
+  .bd.open { display: block; }
+  .bd-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 7px; }
+  .bd-meta span { font-size: 10px; padding: 1px 7px; border-radius: 10px; background: rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.75); }
+  .bd-h { display: flex; align-items: center; gap: 8px; margin: 8px 0 4px; font-size: 9px; font-weight: 700; letter-spacing: 0.06em; color: rgba(255, 255, 255, 0.5); }
+  .bd-h::after { content: ""; flex: 1; height: 0.5px; background: rgba(255, 255, 255, 0.12); }
+  .bd-h:first-of-type { margin-top: 0; }
+  .chart { display: block; width: 100%; height: 96px; }
+  .legend2 { display: flex; gap: 12px; font-size: 9px; color: rgba(255, 255, 255, 0.6); margin: 3px 0 4px; }
+  .legend2 i { display: inline-block; width: 10px; height: 2px; margin-right: 4px; vertical-align: 3px; border-radius: 1px; }
+  .stat2 { display: flex; align-items: center; gap: 8px; height: 19px; font-size: 11px; }
+  .stat2 .lbl { width: 76px; color: rgba(255, 255, 255, 0.55); font-size: 10px; }
+  .stat2 .v { width: 22px; text-align: center; font-weight: 700; }
+  .stat2 .bar { flex: 1; height: 5px; display: flex; gap: 2px; }
+  .stat2 .bar i { display: block; height: 100%; border-radius: 3px; }
+  .nopts { font-size: 10px; color: rgba(255, 255, 255, 0.4); }
+
   /* ---- San Jose Sharks theme: teal card, light-teal accents ---- */
   .card.nhl .mid .sm.dim, .card.nhl .rank b, .card.nhl .card-h .accent, .card.nhl .note { color: ${TEAL}; }
   .card.nhl .matchup { box-shadow: inset 0 -2px 0 ${TEAL}; }
@@ -680,31 +791,57 @@ function F1Card({ sport, tz }) {
 
 const isFlag = (url) => /flag/i.test(url || "");
 
-function Matchup({ ev, tz, L, zh }) {
+// Faint ice markings behind the NHL matchup, kept clear of the text: goal lines + creases at
+// the ends, blue lines between the logos and the centre, red line only as ticks at the boards.
+const RinkLines = () => (
+  <svg className="rink-lines" viewBox="0 0 400 100" preserveAspectRatio="none">
+    <line x1="20" y1="8" x2="20" y2="92" stroke="rgba(255,69,58,0.28)" strokeWidth="1.2" />
+    <line x1="380" y1="8" x2="380" y2="92" stroke="rgba(255,69,58,0.28)" strokeWidth="1.2" />
+    <path d="M20,41 A9,9 0 0 1 20,59 Z" fill="rgba(10,132,255,0.16)" />
+    <path d="M380,41 A9,9 0 0 0 380,59 Z" fill="rgba(10,132,255,0.16)" />
+    <line x1="118" y1="0" x2="118" y2="100" stroke="rgba(10,132,255,0.3)" strokeWidth="2.5" />
+    <line x1="282" y1="0" x2="282" y2="100" stroke="rgba(10,132,255,0.3)" strokeWidth="2.5" />
+    <line x1="200" y1="0" x2="200" y2="9" stroke="rgba(255,69,58,0.4)" strokeWidth="2.5" />
+    <line x1="200" y1="91" x2="200" y2="100" stroke="rgba(255,69,58,0.4)" strokeWidth="2.5" />
+  </svg>
+);
+
+function Matchup({ ev, tz, L, zh, rink }) {
   const [a, b] = ev.competitors;
   const live = ev.status === "live";
+  const streak = (c) => ((c.form || "").match(/·\s*([A-Z]+)(\d+)/) || []);
   const Team = ({ c }) => (
     <div className="team">
       <Img src={c.logo} cls={isFlag(c.logo) ? "flag" : ""} />
       <div className="ab ellipsis">{zh && c.name_zh ? c.name_zh : c.short}</div>
       {c.record && <div className="rec">{c.record}</div>}
-      {c.form && <div className="frm">{c.form}</div>}
+      {rink && streak(c)[1] ? <div className={`streak ${streak(c)[1]}`}>{streak(c)[1]}{streak(c)[2]}</div>
+        : c.form && <div className="frm">{c.form}</div>}
     </div>
   );
+  const lv = ev.live;
   const title = zh ? zhTournament(ev.title) : shortTitle(ev.title);
   return (
-    <div className={`matchup ${isHot(ev, tz) ? "hot" : ""}`}>
+    <div className={`matchup ${rink ? "rink" : ""} ${live && ev.detail ? "live" : ""} ${!live && isHot(ev, tz) ? "hot" : ""}`}
+         onClick={live && ev.detail ? toggleDetail : null}>
+      {rink && <RinkLines />}
       <Team c={a} />
-      <div className="mid">
-        <div className="big">
-          {live ? `${a.score || 0} – ${b.score || 0}` : isDateOnly(ev) ? relDay(ev, tz, L) : clock(ev.start, tz)}
+      {live ? (
+        <div className="mid">
+          <div className="live-score">{a.score || 0}<i>:</i>{b.score || 0}</div>
+          <div className="live-state">
+            <span className="dot" />
+            {lv ? (lv.intermission ? `${lv.period} INT` : `${lv.period}${lv.clock ? " · " + lv.clock : ""}`) : L.live}
+          </div>
+          {lv && lv.sog && <div className="live-sog">SOG {lv.sog.away}–{lv.sog.home}</div>}
         </div>
-        <div className="sm dim">
-          {live ? <span className="pill live">{L.live}</span>
-            : `${isDateOnly(ev) ? "" : relDay(ev, tz, L) + " · "}${countdown(ev, tz, L)}`}
+      ) : (
+        <div className="mid">
+          <div className="big">{isDateOnly(ev) ? relDay(ev, tz, L) : clock(ev.start, tz)}</div>
+          <div className="sm dim">{`${isDateOnly(ev) ? "" : relDay(ev, tz, L) + " · "}${countdown(ev, tz, L)}`}</div>
+          <div className="sm faint ellipsis">{title}</div>
         </div>
-        <div className="sm faint ellipsis">{title}</div>
-      </div>
+      )}
       <Team c={b} />
     </div>
   );
@@ -732,12 +869,233 @@ function ScoreRow({ ev, tz, L }) {
   );
 }
 
+// NHL game detail toggles open from the scoreboard (finished) or the live matchup.
+function toggleDetail(e) {
+  const panel = e.currentTarget.parentElement.querySelector(".gd");
+  if (panel) panel.classList.toggle("open");
+}
+
+// Last game as a symmetric scoreboard capsule: away · FINAL · home, loser dimmed.
+function Scoreboard({ ev, tz, L }) {
+  const [a, b] = ev.competitors;
+  const suffix = ((ev.result && ev.result.summary) || "").match(/\b(OT|SO)\b/);
+  const outcome = ev.result && ev.result.outcome;
+  const lose = (c) => (c.winner === false ? "lose" : "");
+  return (
+    <div className={`sb ${isHot(ev, tz) ? "hot" : ""}`} onClick={toggleDetail}>
+      <div className={`side ${lose(a)}`}><Img src={a.logo} /><span className="ab">{a.short}</span><span className="pts">{a.score}</span></div>
+      <div className="mid">
+        <span className="fin">FINAL{suffix ? `/${suffix[1]}` : ""}</span>
+        <div className="when">{relDay(ev, tz, L)}</div>
+      </div>
+      <div className={`side home ${lose(b)}`}><span className="pts">{b.score}</span><span className="ab">{b.short}</span><Img src={b.logo} /></div>
+      {outcome && <span className={`wl ${outcome}`}>{outcome === "win" ? "W" : "L"}</span>}
+      {ev.detail && <span className="tog">▾</span>}
+    </div>
+  );
+}
+
+const PERIOD_NAMES = { 1: "1st Period", 2: "2nd Period", 3: "3rd Period", OT: "Overtime" };
+
+function GameDetail({ ev }) {
+  const d = ev.detail;
+  if (!d) return null;
+  const [a, b] = ev.competitors;
+  const logo = {};
+  ev.competitors.forEach((c) => { logo[c.short] = c.logo; });
+  const tint = (c) => (c.self ? "#5fd3da" : "rgba(255,255,255,0.4)");
+  const sog = d.sog || {};
+  const total = (sog.away || 0) + (sog.home || 0) || 1;
+  let periods = ["1", "2", "3"].concat(d.goals.some((g) => g.period === "OT") ? ["OT"] : []);
+  if (ev.status === "live" && ev.live) {
+    // Only periods that have started.
+    const cur = { "1ST": 1, "2ND": 2, "3RD": 3 }[ev.live.period] || 4;
+    periods = periods.filter((p, i) => i < cur);
+  }
+  return (
+    <div className="gd">
+      <div className="gd-h">Shots on goal</div>
+      <div className="sog">
+        <span><span className="faint">{a.short}</span> {sog.away}</span>
+        <span className="bar">
+          <i style={{ width: `${(100 * (sog.away || 0)) / total}%`, background: tint(a) }} />
+          <i style={{ flex: 1, background: tint(b) }} />
+        </span>
+        <span>{sog.home} <span className="faint">{b.short}</span></span>
+      </div>
+      {periods.map((p) => {
+        const goals = d.goals.filter((g) => g.period === p);
+        return (
+          <div key={p}>
+            <div className="gd-h">{PERIOD_NAMES[p] || p}{goals.length ? null : <em>No scoring</em>}</div>
+            {goals.map((g, i) => {
+              const [x, y] = g.score.split("–");
+              const awayScored = g.team === a.short;
+              return (
+                <div className="goal" key={i}>
+                  <span className="t">{g.time}</span>
+                  <Img src={logo[g.team]} />
+                  <div className="who">
+                    <b>{g.scorer}</b>{g.scorer_total ? <i> ({g.scorer_total})</i> : null}
+                    {g.strength && <span className="tag">{g.strength}</span>}
+                    {g.empty_net && <span className="tag">EN</span>}
+                    <div className="ast">{g.assists.length ? g.assists.join(", ") : "Unassisted"}</div>
+                  </div>
+                  <span className="sc">{awayScored ? <b>{x}</b> : x} – {awayScored ? y : <b>{y}</b>}</span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+      {d.shootout && d.shootout.length > 0 && (
+        <div>
+          <div className="gd-h">Shootout</div>
+          {[a, b].map((c) => (
+            <div className="so" key={c.short}>
+              <Img src={c.logo} />
+              <span>{c.short}</span>
+              <span className="att">
+                {d.shootout.filter((x) => x.team === c.short).map((x, i) => (
+                  <i key={i} className={x.result === "goal" ? "goal-hit" : ""} />
+                ))}
+              </span>
+            </div>
+          ))}
+          {d.shootout.filter((x) => x.winner).map((x) => <div className="so-win" key={x.player}>Winner · {x.player}</div>)}
+        </div>
+      )}
+      {d.stars && d.stars.length > 0 && (
+        <div>
+          <div className="gd-h">Three stars</div>
+          <div className="stars">
+            {d.stars.map((st) => (
+              <div key={st.star}>
+                <div className="st">{"★".repeat(st.star)}</div>
+                <Img src={logo[st.team]} />
+                <div className="nm">{st.name}</div>
+                <div className="ln">{st.pos} · {st.line}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- badminton extras ----------
+
+const Shuttle = () => (
+  <svg className="shuttle" viewBox="0 0 24 24">
+    <path d="M12 22a3 3 0 0 0 3-3v-1H9v1a3 3 0 0 0 3 3z" fill="#ffd76a" />
+    <path d="M9 18 4 4l5 2 3-4 3 4 5-2-5 14z" fill="none" stroke="#fff" strokeWidth="1.4" strokeLinejoin="round" />
+    <path d="M12 2v16M9 6l1 12M15 6l-1 12" stroke="rgba(255,255,255,0.6)" strokeWidth="1" />
+  </svg>
+);
+
+// Faint court lines behind the last-match board: sidelines, service lines, centre line, net.
+const CourtLines = () => (
+  <svg className="court-lines" viewBox="0 0 400 100" preserveAspectRatio="none">
+    <g stroke="rgba(255,255,255,0.13)" strokeWidth="1.5" fill="none">
+      <rect x="6" y="6" width="388" height="88" />
+      <line x1="6" y1="16" x2="394" y2="16" /><line x1="6" y1="84" x2="394" y2="84" />
+      <line x1="30" y1="6" x2="30" y2="94" /><line x1="370" y1="6" x2="370" y2="94" />
+      <line x1="142" y1="6" x2="142" y2="94" /><line x1="258" y1="6" x2="258" y2="94" />
+      <line x1="30" y1="50" x2="142" y2="50" /><line x1="258" y1="50" x2="370" y2="50" />
+    </g>
+    <line x1="200" y1="0" x2="200" y2="100" stroke="rgba(255,255,255,0.32)" strokeWidth="2" strokeDasharray="3 2" />
+  </svg>
+);
+
+function toggleBD(e) {
+  const panel = e.currentTarget.parentElement.querySelector(".bd");
+  if (panel) panel.classList.toggle("open");
+}
+
+// Score progression: one section per game, our points (gold) vs opponent (white) per rally.
+function ScoreChart({ games }) {
+  const W = 300, H = 96, top = 14, bottom = 6, gap = 8;
+  const total = games.reduce((a, g) => a + g.points.length, 0);
+  const maxPts = Math.max(21, ...games.map((g) => Math.max(g.self, g.opp)));
+  const usable = W - gap * (games.length - 1);
+  const y = (v) => H - bottom - ((H - top - bottom) * v) / maxPts;
+  let x0 = 0;
+  const parts = games.map((g, gi) => {
+    const w = (usable * g.points.length) / total;
+    const x = (i) => x0 + (w * (i + 1)) / g.points.length;
+    const line = (k) => `M${x0},${y(0)} ` + g.points.map((p, i) => `L${x(i).toFixed(1)},${y(p[k]).toFixed(1)}`).join(" ");
+    const won = g.self > g.opp;
+    const el = (
+      <g key={gi}>
+        <rect x={x0} y={top - 2} width={w} height={H - top - bottom + 2} rx="3" fill="rgba(255,255,255,0.035)" />
+        <line x1={x0} y1={y(11)} x2={x0 + w} y2={y(11)} stroke="rgba(255,255,255,0.08)" strokeDasharray="2 2" />
+        <path d={line(1)} fill="none" stroke="rgba(255,255,255,0.65)" strokeWidth="1.4" strokeLinejoin="round" />
+        <path d={line(0)} fill="none" stroke="#ffd76a" strokeWidth="1.8" strokeLinejoin="round" />
+        <text x={x0 + 2} y={9} fontSize="8" fill="rgba(255,255,255,0.5)">G{gi + 1}</text>
+        <text x={x0 + w - 2} y={9} fontSize="8.5" textAnchor="end" fontWeight="700" fill={won ? "#ffd76a" : "rgba(255,255,255,0.75)"}>
+          {g.self}-{g.opp}
+        </text>
+      </g>
+    );
+    x0 += w + gap;
+    return el;
+  });
+  return <svg className="chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">{parts}</svg>;
+}
+
+function BadmintonDetail({ ev, zh, selfName }) {
+  const d = ev.detail;
+  if (!d) return null;
+  const [me, op] = ev.competitors;
+  const hasPts = d.games.some((g) => g.points && g.points.length);
+  const st = d.stats || {};
+  const Stat = ({ label, pair }) => (pair && pair[0] != null ? (
+    <div className="stat2">
+      <span className="lbl">{label}</span>
+      <span className="v" style={{ color: "#ffd76a" }}>{pair[0]}</span>
+      <span className="bar">
+        <i style={{ width: `${(100 * pair[0]) / ((pair[0] + pair[1]) || 1)}%`, background: "#ffd76a" }} />
+        <i style={{ flex: 1, background: "rgba(255,255,255,0.4)" }} />
+      </span>
+      <span className="v">{pair[1]}</span>
+    </div>
+  ) : null);
+  return (
+    <div className="bd">
+      <div className="bd-meta">
+        {d.duration && <span>{zh ? `用时 ${d.duration} 分钟` : `${d.duration} min`}</span>}
+        {d.venue && <span>{d.venue}</span>}
+      </div>
+      <div className="bd-h">{zh ? "得分走势" : "Score progression"}</div>
+      {hasPts ? (
+        <div>
+          <ScoreChart games={d.games} />
+          <div className="legend2">
+            <span><i style={{ background: "#ffd76a" }} />{selfName || me.name}</span>
+            <span><i style={{ background: "rgba(255,255,255,0.65)" }} />{zh && op.name_zh ? op.name_zh : op.name}</span>
+          </div>
+        </div>
+      ) : <div className="nopts">{zh ? "暂无逐分数据" : "No point-by-point data"}</div>}
+      {st.rallies_won && st.rallies_won[0] != null && (
+        <div>
+          <div className="bd-h">{zh ? "技术统计" : "Stats"}</div>
+          <Stat label={zh ? "总得分" : "Points won"} pair={st.rallies_won} />
+          <Stat label={zh ? "最长连续得分" : "Longest run"} pair={st.max_streak} />
+          <Stat label={zh ? "局点" : "Game points"} pair={st.game_points} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Tennis-style board with per-game scores. selfName replaces our side's name.
-function Board({ ev, tz, selfName, zh }) {
+function Board({ ev, tz, selfName, zh, court }) {
   const n = Math.max(...ev.competitors.map((c) => (c.games || []).length));
   const other = (i) => ev.competitors[1 - i].games || [];
   return (
-    <div className={`board ${isHot(ev, tz) ? "hot" : ""}`}>
+    <div className={`board ${court ? "court" : ""} ${isHot(ev, tz) ? "hot" : ""}`} onClick={court && ev.detail ? toggleBD : null}>
+      {court && <CourtLines />}
       {ev.competitors.map((c, i) => {
         const games = c.games || [];
         return (
@@ -755,6 +1113,7 @@ function Board({ ev, tz, selfName, zh }) {
           </div>
         );
       })}
+      {court && ev.detail && <span className="tog">▾</span>}
     </div>
   );
 }
@@ -820,7 +1179,8 @@ const Change = ({ n }) =>
   : n < 0 ? <span className="chg down">▼{-n}</span>
   : <span className="chg same">–</span>;
 
-function Subject({ s, tz, L, zh }) {
+function Subject({ s, tz, L, zh, sportId }) {
+  const nhl = sportId === "nhl";
   const r = s.ranking;
   const { next, last } = s;
   const hasGames = last && last.competitors && last.competitors.some((c) => c.games);
@@ -837,7 +1197,13 @@ function Subject({ s, tz, L, zh }) {
       </div>
       {r && r.note && <div className="note">{r.note}</div>}
 
-      {next && next.competitors ? <div><Matchup ev={next} tz={tz} L={L} zh={zh} /><Path path={next.path} zh={zh} /></div>
+      {next && next.competitors ? (
+        <div>
+          <Matchup ev={next} tz={tz} L={L} zh={zh} rink={nhl} />
+          {nhl && next.status === "live" && <GameDetail ev={next} />}
+          <Path path={next.path} zh={zh} />
+        </div>
+      )
         : next ? (
           <div>
             <div className="row-h"><span>{L.next}</span><Badge ev={next} tz={tz} L={L} /></div>
@@ -854,7 +1220,14 @@ function Subject({ s, tz, L, zh }) {
       {last && (
         <div>
           <div className="row-h"><span className="ellipsis">{lastLabel}</span><Badge ev={last} tz={tz} L={L} /></div>
-          {hasGames ? <Board ev={last} tz={tz} selfName={zh ? s.short : null} zh={zh} />
+          {hasGames && sportId === "badminton" ? (
+            <div>
+              <Board ev={last} tz={tz} selfName={zh ? s.short : null} zh={zh} court />
+              <BadmintonDetail ev={last} zh={zh} selfName={zh ? s.short : null} />
+            </div>
+          )
+            : hasGames ? <Board ev={last} tz={tz} selfName={zh ? s.short : null} zh={zh} />
+            : nhl && last.competitors ? <div><Scoreboard ev={last} tz={tz} L={L} /><GameDetail ev={last} /></div>
             : last.competitors ? <ScoreRow ev={last} tz={tz} L={L} />
             : <NextLine ev={last} tz={tz} L={L} zh={zh} />}
         </div>
@@ -877,7 +1250,7 @@ function H2HCard({ sport, tz }) {
   return (
     <div className={`card ${sport.id} ${collapsed ? "collapsed" : ""}`} style={style}>
       <Header>
-        <span>{sport.name}</span>
+        <span>{sport.id === "badminton" && <Shuttle />}{sport.name}</span>
         <span className="right">
           {r && r.detail && <span className="accent">{r.detail} · {r.points} pts</span>}
           <Chevron sport={sport} tz={tz} collapsed={collapsed} />
@@ -885,7 +1258,7 @@ function H2HCard({ sport, tz }) {
       </Header>
       <Summary sport={sport} tz={tz} L={L} zh={zh} />
       <div className="body">
-        {sport.subjects.map((s) => <Subject s={s} tz={tz} L={L} zh={zh} key={s.id} />)}
+        {sport.subjects.map((s) => <Subject s={s} tz={tz} L={L} zh={zh} sportId={sport.id} key={s.id} />)}
       </div>
     </div>
   );

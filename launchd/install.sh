@@ -9,13 +9,13 @@
 #        ./launchd/install.sh remove   unload + delete runtime copy
 set -e
 LABEL=com.adaxu.sports-tracker
+LABELS="$LABEL $LABEL.live"   # 30-min snapshot + 1-min live scores
 PROJECT="$(cd "$(dirname "$0")/.." && pwd)"
 RUNTIME="$HOME/Library/Application Support/sports-tracker"
-DEST="$HOME/Library/LaunchAgents/$LABEL.plist"
 
-launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
+for L in $LABELS; do launchctl bootout "gui/$(id -u)/$L" 2>/dev/null || true; done
 if [ "$1" = "remove" ]; then
-  rm -f "$DEST"
+  for L in $LABELS; do rm -f "$HOME/Library/LaunchAgents/$L.plist"; done
   rm -rf "$RUNTIME"
   echo "removed $LABEL and $RUNTIME"
   exit 0
@@ -32,8 +32,10 @@ if [ ! -x "$RUNTIME/.venv/bin/python" ]; then
 fi
 "$RUNTIME/.venv/bin/pip" install -q --disable-pip-version-check -r "$RUNTIME/requirements.txt"
 
-# launchd needs a real file with absolute paths.
-sed "s#__RUNTIME__#$RUNTIME#g" "$PROJECT/launchd/$LABEL.plist.template" > "$DEST"
-launchctl bootstrap "gui/$(id -u)" "$DEST"
+# launchd needs real files with absolute paths.
+for L in $LABELS; do
+  sed "s#__RUNTIME__#$RUNTIME#g" "$PROJECT/launchd/$L.plist.template" > "$HOME/Library/LaunchAgents/$L.plist"
+  launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/$L.plist"
+done
 echo "deployed to $RUNTIME"
-echo "loaded $LABEL (runs now, then every 30 min)"
+echo "loaded $LABEL (now + every 30 min) and $LABEL.live (every minute)"

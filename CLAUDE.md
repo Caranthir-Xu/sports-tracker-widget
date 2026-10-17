@@ -12,7 +12,8 @@ client (Übersicht now, iOS Scriptable later) only reads `data.json`.
   optionally `fetch_sport(sport_cfg) -> dict` merged into the sport entry (F1: `tables`)
 - `providers/common.py` — `get_json` (urllib, cached per run), `event()`/`result()` builders
 - `widget/sports-tracker.widget/index.jsx` — Übersicht widget (display only)
-- `launchd/install.sh` + `com.adaxu.sports-tracker.plist.template` — scheduled job
+- `launchd/install.sh` + `*.plist.template` — scheduled jobs: `com.adaxu.sports-tracker`
+  (full snapshot, every 30 min) and `com.adaxu.sports-tracker.live` (`fetch.py --live`, every 60 s)
 - Run manually: `.venv/bin/python fetch.py` (Python 3.9, deps in `requirements.txt`: PyYAML, curl_cffi).
   Writes the project's own `data.json` (dev copy; the widget does not read it).
 
@@ -44,9 +45,20 @@ runs from a runtime copy:
   page (native `<details>` for the candidate lists). Running it in the app shows a preview menu.
 - Install/update: `./ios/install.sh` copies both files to
   `~/Library/Mobile Documents/iCloud~dk~simonbs~Scriptable/Documents`.
-- Testing without a phone: run the module under Node with shims for `Request`/`FileManager`/
-  `Timer` (route BWF through curl_cffi, since Node is blocked) and compare with Python's
-  data.json; widget layouts can be mocked by rendering the ListWidget tree to HTML.
+- Testing without a phone (`ios/dev/`, Node = Übersicht's bundled `node-arm64`):
+  `node ios/dev/test.js` runs `Sports Data.js` with Scriptable shims (BWF via `cffi.py`, since
+  Node is blocked) → `ios/dev/out/data.json`, compare with the Mac's data.json;
+  `node ios/dev/widgetmock.js` renders every widget size + the detail page to `ios/dev/out/www/`.
+  NHL detail/live (`nhlDetail`, `nhlLive`) and badminton match detail (`dayRow`, `matchDetail`) are
+  ported to iOS. iOS widgets: NHL matchup has a DrawContext rink as stack `backgroundImage`, last game
+  is a scoreboard capsule; badminton uses `COURT_GREEN` + gold ranks. The detail page mirrors the
+  desktop NHL card and badminton card (timeline path, court board, `scoreChartSVG`, stats), toggled by `gd(id)`.
+- Widget runs call `load(CONFIG, { lite: true })`: `LITE` skips detail-only data (NHL landing,
+  BWF h2h/match + draw paths + top-500 ranks, F1 tables — keeps previous tables, fetches only
+  next_round). A full run (detail page, `force: true`) fetches everything. A widget run that runs
+  out of memory/time is killed silently and iOS keeps the previous snapshot — keep widget work lean.
+- After installing, iOS keeps showing each home-screen widget's old snapshot until it refreshes
+  (each widget separately; re-pick the script in Edit Widget to force it).
 - F1 on iOS mirrors the desktop racing style. Widgets can't slant text, so they use
   `raceFont()` (HelveticaNeue-CondensedBlack) upright, and draw the slanted number plate
   (`plateImage`) and start lights (`lightsImage`) with DrawContext. The detail page (HTML) uses the same CSS as the
@@ -68,14 +80,17 @@ runs from a runtime copy:
 | F1 | OpenF1 `api.openf1.org/v1` | `meetings`, `sessions` (schedule), `session_result` (positions incl. practice) | Free for historical data. Live-session access may need a paid account; if blocked during a session, F1 goes stale until it ends. |
 | F1 | Jolpica `api.jolpi.ca/ergast/f1` | `current/driverStandings.json` | Ergast successor. ~4 req/s, 500 req/h limit. |
 | F1 | MultiViewer `api.multiviewer.app/api/v1/circuits/{circuit_key}/{year}` | circuit outline `x/y`, `rotation`, `miniSectorsIndexes` | Unofficial. Some circuits (e.g. Singapore 61) have no mini-sector data. |
-| NHL | `api-web.nhle.com/v1` | `club-schedule-season/{TEAM}/now`, `standings/now` | Unofficial, undocumented, no key. |
+| NHL | `api-web.nhle.com/v1` | `club-schedule-season/{TEAM}/now`, `standings/now`, `gamecenter/{id}/landing` (goals, shootout, SOG, three stars) | Unofficial, undocumented, no key. |
 | Badminton | BWF `extranet-lv.bwfbadminton.com/api/` | rankings, player prev/next match, calendar, day schedule, entry lists | Undocumented. Cloudflare blocks urllib/curl (403); `curl_cffi` with `impersonate="chrome"` works. No token. |
 
 BWF endpoints in use:
 - `vue-rankingtable?rankId=2&catId={6 MS,7 WS,8 MD,9 WD,10 XD}&publicationId=0&doubles=...&searchKey=<BWF name>` (publicationId=0 = latest)
 - `vue-player-match-previous` / `vue-player-match-next?playerId=...` — date only (`00:00:00`); `next` may return an already finished match, so always check `match_state == "F"`
 - `vue-grouped-year-tournaments?year=&category[]=22..26` — World Tour calendar only (no Asian Games, Worlds, Olympics)
-- `tournaments/day-matches?tournamentCode=&date=` — gives `matchTimeUtc`; used to upgrade a match to an exact time
+- `tournaments/day-matches?tournamentCode=&date=` — gives `matchTimeUtc` and the in-tournament match `code`
+- `vue-tournament-detail?tmtId=` — tournament GUID `code` for ANY tournament (also non-World-Tour, e.g. Asian Games)
+- `h2h/match?tmt_id=&match_code=` — match detail: duration, venue, stats (rallies won, longest run,
+  game points) and `games[].match_set_details_model` = every rally's running score (may be empty)
 - `entries/vue-tournament-event-stages` + `entries/vue-tournament-players-staged?searchKey=` (eventName 1 MS..5 XD); stages named Withdrawn/Reserve are ignored
 - `vue-tournament-draws?tmtTab=draw&tmtId=` (draw id = entry with `text == event`, `qualification == 0`) +
   `vue-tournament-draw-data?tmtTab=draw&tmtId=&drawId=` — bracket keyed `"round-position"`, each `{match: {team1, team2, team1seed, winner, roundName}}`
@@ -93,7 +108,9 @@ BWF endpoints in use:
 Event = { title, subtitle, start, time_precision ("exact"|"date"),
           status ("scheduled"|"live"|"final"|"cancelled"),
           result: { outcome ("win"|"loss"|null), summary } | null,
-          live: null,            # reserved for a future live mode
+          id,                    # source id (NHL game id) for live refresh
+          live: { period ("1ST".."3RD"|"OT"|"SO"), clock, intermission, running, sog: {away, home},
+                  updated_at } | null,   # NHL, written by fetch.py --live while a game is on
           url, location, image (e.g. country flag) — each may be null,
           competitors: [ Competitor ] | null,                       # head-to-head only
           sessions: [ { name, start, status, result } ] | null }   # F1 weekend only
@@ -113,6 +130,12 @@ Event also has:
   path  = [ { round, name, name_zh, logo, seed, rank, confirmed, pool,
               candidates: [ { name, name_zh, logo, seed, rank } ] | null } ]  # BWF knockout path
           # rank = current world rank (top 500, null if unranked or a new pair); candidates sorted by rank
+  detail = { goals: [ { period ("1"|"2"|"3"|"OT"), time, team, scorer, scorer_total, assists: [..],
+              strength ("PP"|"SH"|null), empty_net, score ("away–home") } ],
+            shootout: [ { team, player, result ("goal"|"save"|"miss"), winner } ],
+            sog: { away, home }, stars: [ { star, team, name, pos, line } ] }   # NHL finished game only
+  # badminton finished match: detail = { duration, venue, games: [ { self, opp, points: [[self, opp]...] } ],
+  #   stats: { rallies_won, max_streak, game_points } as [self, opp] }   (points empty if BWF has none)
   # NHL: [away, home], score = goals. Badminton: [self, opponent], games = per-game points, score = games won.
 ```
 - Subject display fields (`team/color/image/badge`) come from the provider's
@@ -171,6 +194,26 @@ Event also has:
 - Widget layout: `F1Card` (Box Box style: flag, countdown, session strip, driver rows
   in team colour) for sport id `f1`; every other sport uses the generic `H2HCard`
   (Apple Sports style: matchup with logos for `next`, score row or per-game board for `last`).
+- NHL live mode: `fetch.py --live` calls providers' optional `refresh_live(cfg, subject)`.
+  NHL polls `gamecenter/{id}/landing` only if the next game is live or within −15 min…+5 h of
+  its start (otherwise no request); updates score, `live`, `detail` (goals so far). When the
+  game reports FINAL it returns a full `fetch_subject()` so last/next roll over. Writes only
+  when something changed; logs to `logs/live.log`.
+- NHL card ("hockey", refined): next game on a faint ice sheet (`RinkLines`: goal lines and
+  creases at the ends, blue lines beside the logos, red line only as ticks at the boards —
+  nothing crosses the text), team logo + record + streak chip. Live: big score, red dot +
+  period/clock (or "INT"), SOG; clicking the live matchup opens `GameDetail` (started periods
+  only). Last game = symmetric scoreboard capsule (away · FINAL[/OT/SO] · home, loser dimmed);
+  click toggles `GameDetail`: two-sided SOG bar, goals by period (time chip, scorer (total),
+  PP/SH/EN tags, assists, running score with the scoring side bold), shootout dots, three
+  stars as three cards. Only the NHL uses these (`Subject` gets `sportId`).
+- Übersicht must be running for the desktop widget: it lives in /Applications and needs
+  "Launch Übersicht when I login" ticked (the user's setting). The launchd data job is separate.
+- Badminton card: court-green gradient, shuttlecock icon in the header, draw path as a vertical
+  timeline (solid dot = confirmed opponent, hollow = possible), last match board on faint court lines
+  (`CourtLines`); clicking it toggles `BadmintonDetail`: duration/venue chips, `ScoreChart` (one
+  section per game, our running score gold vs opponent white, game score labels), two-sided bars
+  for points won / longest run / game points. Shows "暂无逐分数据" when there are no rallies.
 - Themes: F1 card gradient = the two drivers' team colours (Ferrari red → Red Bull blue);
   a single-subject H2H card uses the subject `color` (Sharks teal) + `.card.nhl` orange accents.
 - Language: sports listed in `ZH_SPORTS` (badminton) render in Chinese (`T.zh`, `ZH_EVENTS`,

@@ -3,6 +3,10 @@
 
 A failing subject keeps its last good data and is marked stale;
 other subjects are unaffected.
+
+`fetch.py --live` (run every minute) only touches games that are live or about to
+start, via each provider's optional refresh_live(); it exits without any request
+when nothing is on.
 """
 import importlib
 import json
@@ -118,5 +122,42 @@ def main():
     print(f"{iso(now_utc())} wrote {out_path} ({failures} failed)")
 
 
+def live_main():
+    config = yaml.safe_load((ROOT / "config.yaml").read_text())
+    out_path = ROOT / config.get("output", "data.json")
+    try:
+        data = json.loads(out_path.read_text())
+    except (OSError, ValueError):
+        return  # no snapshot yet; the regular run creates it
+    current = {s["id"]: s for sp in data.get("sports", []) for s in sp["subjects"]}
+    changed = []
+    for sport in config["sports"]:
+        try:
+            provider = importlib.import_module(f"providers.{sport['provider']}")
+        except Exception:
+            continue
+        if not hasattr(provider, "refresh_live"):
+            continue
+        for cfg in sport["subjects"]:
+            subj = current.get(cfg["id"])
+            try:
+                update = provider.refresh_live(cfg, subj)
+            except Exception:
+                traceback.print_exc(file=sys.stderr)
+                continue
+            if not update or subj is None:
+                continue
+            profile = update.pop("profile", None)
+            subj.update(update)
+            if profile:
+                subj.update(profile_fields(profile, cfg))
+            subj.update(updated_at=iso(now_utc()), stale=False, error=None)
+            changed.append(cfg["id"])
+    if changed:
+        data["generated_at"] = iso(now_utc())
+        write_atomic(out_path, data)
+        print(f"{iso(now_utc())} live update: {', '.join(changed)}")
+
+
 if __name__ == "__main__":
-    main()
+    live_main() if "--live" in sys.argv else main()

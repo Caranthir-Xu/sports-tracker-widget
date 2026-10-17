@@ -23,6 +23,9 @@ function readJSON(name) {
 function writeJSON(name, obj) { fm.writeString(file(name), JSON.stringify(obj)); }
 
 const memo = {}; // per-run cache, so shared calls (standings, calendar) run once
+// Widget runs fetch "lite": skip data only the detail page shows (goal/rally detail, draw paths,
+// F1 tables). Widgets have tight memory/time limits; a killed run leaves iOS showing an old snapshot.
+let LITE = false;
 function getJSON(url, headers) {
   if (!memo[url]) {
     memo[url] = (async () => {
@@ -60,7 +63,7 @@ function event(o) {
     time_precision: o.precision || "exact", status: o.status, result: o.result || null,
     live: null, url: o.url || null, location: o.location || null, image: o.image || null,
     competitors: o.competitors || null, sessions: o.sessions || null,
-    track: o.track || null, path: o.path || null,
+    track: o.track || null, path: o.path || null, detail: o.detail || null, id: o.id || null,
     country: o.country || null, // ISO3/IOC code (iOS uses it for emoji flags)
   };
 }
@@ -237,6 +240,10 @@ async function f1Subject(subj) {
 
 // Sport-level tables shared by all drivers: last race classification, driver standings.
 async function f1Sport(sportCfg) {
+  if (LITE) {
+    const nextRace = (await getJSON(`${JOLPICA}/current/next.json`)).MRData.RaceTable.Races[0];
+    return { next_round: nextRace ? +nextRace.round : null };
+  }
   const followed = new Set(sportCfg.subjects.map((s) => s.jolpica_id));
   const [drivers, raceData, standData, nextData] = await Promise.all([
     getJSON(`${OPENF1}/drivers?session_key=latest`), getJSON(`${JOLPICA}/current/last/results.json`),
@@ -291,6 +298,45 @@ async function nhlForm(abbrev) {
   return [`${t.wins}-${t.losses}-${t.otLosses}`, streak ? `L10 ${l10} · ${streak}` : `L10 ${l10}`];
 }
 
+// Goals, shootout, shots and three stars from a gamecenter landing (= Python _detail_from_landing).
+const PERIOD_LABELS = { OT: "OT", SO: "SO" };
+const ORDINALS = { 1: "1ST", 2: "2ND", 3: "3RD" };
+function nhlDetail(d) {
+  const summary = d.summary || {};
+  const goals = [];
+  (summary.scoring || []).forEach((period) => {
+    const pd = period.periodDescriptor;
+    if (pd.periodType === "SO") return; // shootout listed separately
+    const label = PERIOD_LABELS[pd.periodType] || String(pd.number);
+    period.goals.forEach((g) => {
+      const strength = (g.strength || "ev").toUpperCase();
+      goals.push({
+        period: label, time: g.timeInPeriod, team: g.teamAbbrev.default, scorer: g.name.default,
+        scorer_total: g.goalsToDate, assists: (g.assists || []).map((a) => a.name.default),
+        strength: strength === "EV" ? null : strength, empty_net: g.goalModifier === "empty-net",
+        score: `${g.awayScore}–${g.homeScore}`,
+      });
+    });
+  });
+  const so = summary.shootout && !Array.isArray(summary.shootout) ? summary.shootout.events || [] : [];
+  const shootout = so.map((e) => ({ team: e.teamAbbrev.default, player: `${e.firstName.default[0]}. ${e.lastName.default}`, result: e.result, winner: !!e.gameWinner }));
+  const stars = (summary.threeStars || []).map((st) => ({
+    star: st.star, team: st.teamAbbrev, name: st.name.default, pos: st.position,
+    line: st.position === "G" ? `${(st.savePctg || 0).toFixed(3).replace(/^0/, "")} SV%` : `${st.goals || 0}G ${st.assists || 0}A`,
+  }));
+  return { goals, shootout, stars, sog: { away: d.awayTeam.sog, home: d.homeTeam.sog } };
+}
+
+function nhlLive(d) {
+  const pd = d.periodDescriptor || {}, clock = d.clock || {};
+  const ptype = pd.periodType || "REG";
+  return {
+    period: ptype === "REG" ? ORDINALS[pd.number] || ptype : ptype, clock: clock.timeRemaining || null,
+    intermission: !!clock.inIntermission, running: !!clock.running,
+    sog: { away: d.awayTeam.sog, home: d.homeTeam.sog }, updated_at: iso(now()),
+  };
+}
+
 async function nhlEvent(g, team) {
   const home = g.homeTeam.abbrev === team;
   const us = home ? g.homeTeam : g.awayTeam, them = home ? g.awayTeam : g.homeTeam;
@@ -312,12 +358,27 @@ async function nhlEvent(g, team) {
     if (status !== "final") [c.record, c.form] = await nhlForm(t.abbrev);
     return c;
   };
-  return event({
+  const competitors = await Promise.all([side(g.awayTeam), side(g.homeTeam)]);
+  // Finished or live: goal detail (and live clock) from the gamecenter landing.
+  let detail = null, live = null;
+  if (!LITE && (status === "final" || status === "live")) {
+    try {
+      const d = await getJSON(`${NHL}/gamecenter/${g.id}/landing`);
+      detail = nhlDetail(d);
+      if (status === "live") {
+        live = nhlLive(d);
+        competitors[0].score = d.awayTeam.score; competitors[1].score = d.homeTeam.score;
+      }
+    } catch (e) { /* optional extra */ }
+  }
+  const ev = event({
     title: GAME_TYPES[g.gameType] || "NHL", subtitle: `${home ? "vs" : "@"} ${them.abbrev}`,
     start: g.startTimeUTC, status, result: res,
     url: g.gameCenterLink ? `https://www.nhl.com${g.gameCenterLink}` : null,
-    location: (g.venue || {}).default, competitors: await Promise.all([side(g.awayTeam), side(g.homeTeam)]),
+    location: (g.venue || {}).default, competitors, detail, id: g.id,
   });
+  ev.live = live;
+  return ev;
 }
 
 async function nhlPlayoffNote(t) {
@@ -408,13 +469,30 @@ async function bwfRanking(subj) {
   return { label: subj.event, position: row.rank, points: +row.points, detail: null, note: null, change: row.rank_previous ? row.rank_previous - row.rank : null };
 }
 
-async function exactTime(m) {
-  const day = m.match_time.slice(0, 10);
-  const t = (await bwfCalendar(+day.slice(0, 4))).find((x) => x.id === m.tournament_model.id);
-  if (!t) return null;
-  const rows = await bwf("tournaments/day-matches", { tournamentCode: t.code, date: day, order: 2, court: 0 });
-  const row = rows.find((r) => r.id === m.id && r.matchTimeUtc);
-  return row ? iso(parseDt(row.matchTimeUtc)) : null;
+// The match's row in its tournament day schedule (matchTimeUtc + in-tournament code); works for
+// any tournament via its GUID from vue-tournament-detail (= Python _day_row).
+async function dayRow(m) {
+  const t = await bwf("vue-tournament-detail", { tmtId: m.tournament_model.id });
+  const code = (t.results || {}).code;
+  if (!code) return null;
+  const rows = await bwf("tournaments/day-matches", { tournamentCode: code, date: m.match_time.slice(0, 10), order: 2, court: 0 });
+  return rows.find((r) => r.id === m.id) || null;
+}
+
+// Rally-by-rally score per game plus stats, from our side (= Python _match_detail).
+async function matchDetail(m, side, row) {
+  const d = await bwf("h2h/match", { tmt_id: m.tournament_model.id, match_code: row.code });
+  const me = `team${side}`, op = `team${3 - side}`;
+  const st = d.stats || {};
+  const pair = (k) => [st[`${me}_${k}`] == null ? null : st[`${me}_${k}`], st[`${op}_${k}`] == null ? null : st[`${op}_${k}`]];
+  return {
+    duration: (d.progress || {}).duration || null, venue: (d.location || {}).locationName || null,
+    games: (d.games || []).slice().sort((a, b) => a.ordering - b.ordering).map((g) => ({
+      self: g[me], opp: g[op],
+      points: (g.match_set_details_model || []).slice().sort((a, b) => a.ordering - b.ordering).map((p) => [p[me], p[op]]),
+    })),
+    stats: { rallies_won: pair("rallies_won"), max_streak: pair("consecutive_points"), game_points: pair("game_points") },
+  };
 }
 
 const playersOf = (m, t) => [m[`t${t}p1_player_model`], m[`t${t}p2_player_model`]].filter(Boolean);
@@ -441,14 +519,17 @@ async function matchEvent(m, pid, eventName) {
     if (m.status_name) summary = `${summary} (${m.status_name})`.trim();
     res = result(summary, m.winner === side ? "win" : "loss");
   }
-  const exact = await exactTime(m);
+  const row = await dayRow(m).catch(() => null);
+  const exact = row && row.matchTimeUtc ? iso(parseDt(row.matchTimeUtc)) : null;
+  const detail = final && row && !LITE ? await matchDetail(m, side, row).catch(() => null) : null;
   const oppName = names(playersOf(m, opp).map((p) => p.name_display))[0];
   return event({
     title: m.tournament_model.name, subtitle: oppName ? `${m.round_name} vs ${oppName}` : m.round_name,
     start: exact || m.match_time.slice(0, 10), precision: exact ? "exact" : "date",
     status: final ? "final" : "scheduled", result: res, url: m.tmt_url,
     competitors: [mk(side), mk(opp)],
-    path: final ? null : await drawPath(m.tournament_model.id, m.draw_model.name.slice(0, 2), pid),
+    path: final || LITE ? null : await drawPath(m.tournament_model.id, m.draw_model.name.slice(0, 2), pid),
+    detail,
   });
 }
 
@@ -542,7 +623,7 @@ async function nextTournament(subj, excludeId) {
     title: t.name, start: t.start_date.slice(0, 10), precision: "date", status: "scheduled",
     url: t.url, location: t.location, image: t.flag_url,
     country: (String(t.flag_url || "").match(/\/([A-Z]{3})\.png/) || [])[1], // calendar 'country' is a name
-    path: await drawPath(t.id, subj.event, subj.player_id),
+    path: LITE ? null : await drawPath(t.id, subj.event, subj.player_id),
   });
 }
 
@@ -586,7 +667,9 @@ async function sportExtras(sport, old, config) {
   const fn = SPORT_PROVIDERS[sport.provider];
   if (!fn) return {};
   try {
-    return Object.assign(await withTimeout(fn(sport), config.timeoutMs || 25000), { tables_stale: false });
+    // A lite run keeps the previous tables (the detail page refetches them in full anyway).
+    const keep = LITE && old && old.tables ? { tables: old.tables } : {};
+    return Object.assign(keep, await withTimeout(fn(sport), config.timeoutMs || 25000), { tables_stale: false });
   } catch (e) {
     return old && old.tables ? { tables: old.tables, next_round: old.next_round, tables_stale: true } : {};
   }
@@ -620,6 +703,7 @@ async function fetchAll(config, previous) {
 // Cached data if fresh enough, otherwise fetch (falling back per subject to the cache).
 async function load(config, opts) {
   opts = opts || {};
+  LITE = !!opts.lite;
   const cached = readJSON("data.json");
   const fresh = cached && Date.now() - Date.parse(cached.generated_at) < (opts.maxAgeMin || 15) * 60000;
   if (fresh && !opts.force) return cached;

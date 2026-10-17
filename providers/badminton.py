@@ -90,18 +90,43 @@ def _scores(html):
     return [int(x) for x in re.findall(r"<span>(\d+)</span>", html or "")]
 
 
-def _exact_time(m):
-    """Look up the scheduled UTC time in the tournament's day schedule."""
+def _day_row(m):
+    """The match's row in its tournament day schedule (has matchTimeUtc and the match code).
+    Works for any tournament, World Tour or not, via the tournament's GUID code."""
     tid = m["tournament_model"]["id"]
-    day = m["match_time"][:10]
-    t = next((t for t in _calendar(int(day[:4])) if t["id"] == tid), None)
-    if not t:
-        return None  # not a World Tour event; only the date is known
-    for row in get("tournaments/day-matches", tournamentCode=t["code"],
-                   date=day, order=2, court=0):
-        if row["id"] == m["id"] and row.get("matchTimeUtc"):
-            return iso(parse_dt(row["matchTimeUtc"]))
-    return None
+    code = (get("vue-tournament-detail", tmtId=tid).get("results") or {}).get("code")
+    if not code:
+        return None
+    rows = get("tournaments/day-matches", tournamentCode=code, date=m["match_time"][:10], order=2, court=0)
+    return next((r for r in rows if r["id"] == m["id"]), None)
+
+
+def _exact_time(m):
+    row = _day_row(m)
+    return iso(parse_dt(row["matchTimeUtc"])) if row and row.get("matchTimeUtc") else None
+
+
+def _match_detail(m, side):
+    """Rally-by-rally score per game plus match stats, from our side's perspective.
+    `points` is empty when BWF has no point-by-point record for the match."""
+    row = _day_row(m)
+    if not row:
+        return None
+    d = get("h2h/match", tmt_id=m["tournament_model"]["id"], match_code=row["code"])
+    me, op = f"team{side}", f"team{3 - side}"
+    games = [{
+        "self": g[me], "opp": g[op],
+        "points": [[p[me], p[op]] for p in sorted(g.get("match_set_details_model") or [], key=lambda p: p["ordering"])],
+    } for g in sorted(d.get("games") or [], key=lambda g: g["ordering"])]
+    st = d.get("stats") or {}
+    pair = lambda k: [st.get(f"{me}_{k}"), st.get(f"{op}_{k}")]
+    return {
+        "duration": (d.get("progress") or {}).get("duration"),
+        "venue": (d.get("location") or {}).get("locationName"),
+        "games": games,
+        "stats": {"rallies_won": pair("rallies_won"), "max_streak": pair("consecutive_points"),
+                  "game_points": pair("game_points")},
+    }
 
 
 def _flag(m, team):
@@ -137,6 +162,12 @@ def _match_event(m, pid):
         res = result(summary, "win" if m["winner"] == side else "loss")
 
     exact = _exact_time(m)
+    detail = None
+    if final:
+        try:
+            detail = _match_detail(m, side)
+        except Exception:
+            detail = None  # optional extra; never fail the subject for it
     path = _draw_path(m["tournament_model"]["id"], m["draw_model"]["name"][:2], pid) if not final else None
     return event(
         title=m["tournament_model"]["name"],
@@ -148,6 +179,7 @@ def _match_event(m, pid):
         url=m.get("tmt_url"),
         competitors=[_side(m, side, side, final), _side(m, opp, side, final)],  # self first
         path=path,
+        detail=detail,
     )
 
 

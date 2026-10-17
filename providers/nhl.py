@@ -1,5 +1,8 @@
 """NHL: schedule and standings from api-web.nhle.com (unofficial, no key)."""
-from .common import get_json, event, result, competitor
+import copy
+from datetime import timedelta
+
+from .common import get_json, event, result, competitor, now_utc, parse_dt
 
 API = "https://api-web.nhle.com/v1"
 GAME_TYPES = {1: "NHL Preseason", 2: "NHL Regular Season", 3: "NHL Playoffs"}
@@ -24,6 +27,52 @@ def _form(abbrev):
     l10 = f"{t['l10Wins']}-{t['l10Losses']}-{t['l10OtLosses']}"
     streak = f"{t.get('streakCode', '')}{t.get('streakCount', '')}"
     return record, f"L10 {l10} · {streak}" if streak else f"L10 {l10}"
+
+
+PERIOD_LABELS = {"OT": "OT", "SO": "SO"}
+
+
+def _landing(game_id):
+    return get_json(f"{API}/gamecenter/{game_id}/landing")
+
+
+def _game_detail(game_id):
+    return _detail_from_landing(_landing(game_id))
+
+
+def _detail_from_landing(d):
+    """Goals, shootout, shots and three stars of a live or finished game."""
+    summary = d.get("summary") or {}
+    goals = []
+    for period in summary.get("scoring", []):
+        pd = period["periodDescriptor"]
+        if pd["periodType"] == "SO":
+            continue  # shootout goals are listed separately
+        label = PERIOD_LABELS.get(pd["periodType"], str(pd["number"]))
+        for g in period["goals"]:
+            strength = (g.get("strength") or "ev").upper()
+            goals.append({
+                "period": label, "time": g["timeInPeriod"], "team": g["teamAbbrev"]["default"],
+                "scorer": g["name"]["default"], "scorer_total": g.get("goalsToDate"),
+                "assists": [a["name"]["default"] for a in g.get("assists", [])],
+                "strength": None if strength == "EV" else strength,  # PP / SH
+                "empty_net": g.get("goalModifier") == "empty-net",
+                "score": f"{g['awayScore']}–{g['homeScore']}",       # away–home, like competitors
+            })
+    shootout = [{
+        "team": e["teamAbbrev"]["default"], "player": f"{e['firstName']['default'][0]}. {e['lastName']['default']}",
+        "result": e["result"], "winner": bool(e.get("gameWinner")),
+    } for e in (summary.get("shootout") or {}).get("events", [])] if isinstance(summary.get("shootout"), dict) else []
+    stars = []
+    for st in summary.get("threeStars", []):
+        if st.get("position") == "G":
+            line = f"{st.get('savePctg', 0):.3f} SV%".lstrip("0")
+        else:
+            line = f"{st.get('goals', 0)}G {st.get('assists', 0)}A"
+        stars.append({"star": st["star"], "team": st["teamAbbrev"], "name": st["name"]["default"],
+                      "pos": st.get("position"), "line": line})
+    return {"goals": goals, "shootout": shootout, "stars": stars,
+            "sog": {"away": d["awayTeam"].get("sog"), "home": d["homeTeam"].get("sog")}}
 
 
 def _event(g, team):
@@ -67,7 +116,16 @@ def _event(g, team):
         url=f"https://www.nhl.com{link}" if link else None,
         location=(g.get("venue") or {}).get("default"),
         competitors=[side(g["awayTeam"]), side(g["homeTeam"])],  # away first, like scoreboards
+        detail=_detail_or_none(g["id"]) if status in ("final", "live") else None,
+        id=g["id"],
     )
+
+
+def _detail_or_none(game_id):
+    try:
+        return _game_detail(game_id)
+    except Exception:
+        return None  # optional extra; never fail the subject for it
 
 
 def _playoff_note(t):
@@ -115,3 +173,53 @@ def fetch_subject(subj):
         "last": _event(done[-1], team) if done else None,
         "profile": {"image": me.get("darkLogo") or me.get("logo")},
     }
+
+
+# ---------- live mode (fetch.py --live, every minute) ----------
+
+LIVE_BEFORE = timedelta(minutes=15)  # start polling shortly before puck drop
+LIVE_AFTER = timedelta(hours=5)      # give up if a game somehow never reports final
+ORDINALS = {1: "1ST", 2: "2ND", 3: "3RD"}
+
+
+def _live_state(d):
+    """Period / clock / shots from a gamecenter landing of a live game."""
+    pd = d.get("periodDescriptor") or {}
+    clock = d.get("clock") or {}
+    ptype = pd.get("periodType", "REG")
+    return {
+        "period": ORDINALS.get(pd.get("number"), ptype) if ptype == "REG" else ptype,  # 1ST / 2ND / 3RD / OT / SO
+        "clock": clock.get("timeRemaining"),
+        "intermission": bool(clock.get("inIntermission")),
+        "running": bool(clock.get("running")),
+        "sog": {"away": d["awayTeam"].get("sog"), "home": d["homeTeam"].get("sog")},
+        "updated_at": now_utc().strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+
+
+def refresh_live(subj, current):
+    """Update the subject's next game while it is live; None when there is nothing to do.
+
+    Makes no request unless a game is live or within the polling window. When the game
+    goes final, returns a full fetch_subject() so 'last'/'next' roll over.
+    """
+    ev = (current or {}).get("next")
+    if not ev or not ev.get("id"):
+        return None
+    start, now = parse_dt(ev["start"]), now_utc()
+    if ev.get("status") != "live" and not (start - LIVE_BEFORE <= now <= start + LIVE_AFTER):
+        return None
+    d = _landing(ev["id"])
+    state = d.get("gameState")
+    if state in FINISHED:
+        return fetch_subject(subj)
+    if state not in ("LIVE", "CRIT"):
+        return None  # pre-game: nothing to show yet
+    ev = copy.deepcopy(ev)
+    ev["status"] = "live"
+    scores = {"away": d["awayTeam"].get("score", 0), "home": d["homeTeam"].get("score", 0)}
+    for side, c in zip(("away", "home"), ev["competitors"]):
+        c["score"] = scores[side]
+    ev["live"] = _live_state(d)
+    ev["detail"] = _detail_from_landing(d)
+    return {"next": ev}

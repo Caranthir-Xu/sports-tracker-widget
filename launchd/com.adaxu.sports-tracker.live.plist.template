@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Runs fetch.py --live every minute (no requests unless a game is on). Template: install.sh replaces __RUNTIME__ -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.adaxu.sports-tracker.live</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__RUNTIME__/.venv/bin/python</string>
+    <string>__RUNTIME__/fetch.py</string>
+    <string>--live</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__RUNTIME__</string>
+  <key>StartInterval</key>
+  <integer>60</integer>
+  <key>StandardOutPath</key>
+  <string>__RUNTIME__/logs/live.log</string>
+  <key>StandardErrorPath</key>
+  <string>__RUNTIME__/logs/live.err.log</string>
+</dict>
+</plist>

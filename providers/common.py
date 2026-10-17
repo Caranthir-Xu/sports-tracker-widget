@@ -38,16 +38,18 @@ def parse_dt(s):
 
 
 def event(title, subtitle, start, status, precision="exact", result=None, url=None,
-          sessions=None, location=None, image=None, competitors=None, track=None, path=None):
+          sessions=None, location=None, image=None, competitors=None, track=None, path=None,
+          detail=None, id=None):
     """Build an Event dict in the data.json schema."""
     return {
+        "id": id,                    # source id (NHL game id), used by live refresh
         "title": title,
         "subtitle": subtitle,
         "start": start,
         "time_precision": precision,
         "status": status,
         "result": result,
-        "live": None,  # reserved for future live mode
+        "live": None,  # filled by fetch.py --live while a game is in progress
         "url": url,
         "location": location,
         "image": image,              # e.g. country flag
@@ -55,6 +57,7 @@ def event(title, subtitle, start, status, precision="exact", result=None, url=No
         "sessions": sessions,
         "track": track,              # F1 circuit outline + sector split
         "path": path,                # knockout draw: possible opponent per round
+        "detail": detail,            # NHL finished game: goals, shootout, shots, stars
     }
 
 
