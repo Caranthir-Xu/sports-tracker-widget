@@ -289,7 +289,7 @@ function bandsBackground(size, bands) {
   const ctx = new DrawContext();
   ctx.size = size;
   ctx.opaque = true;
-  ctx.respectScreenScale = true;
+  ctx.respectScreenScale = false; // 1x is enough for soft gradients and saves ~90% memory vs 3x
   ctx.setFillColor(new Color("#14141a"));
   ctx.fillRect(new Rect(0, 0, size.width, size.height));
   const mix = (a, b, t) => {
@@ -387,7 +387,7 @@ function rinkImage() {
   const ctx = new DrawContext();
   ctx.size = new Size(w, h);
   ctx.opaque = false;
-  ctx.respectScreenScale = true;
+  ctx.respectScreenScale = false; // faint lines; 1x keeps widget memory low
   const line = (x1, y1, x2, y2, color, width) => {
     const p = new Path(); p.move(new Point(x1, y1)); p.addLine(new Point(x2, y2));
     ctx.addPath(p); ctx.setStrokeColor(color); ctx.setLineWidth(width); ctx.strokePath();
@@ -424,8 +424,10 @@ async function nhlBlock(parent, sport, opts) {
     m.cornerRadius = 12;
     m.backgroundColor = isHot(ev) && ev.status !== "live" ? new Color("#ffb340", 0.16) : new Color("#e1f5ff", 0.07);
     m.backgroundImage = rinkImage();
-    const team = async (c) => {
+    // Equal fixed-width team columns + full-width centred rows keep the score dead centre.
+    const team = async (c, right) => {
       const t = vstack(m, 1);
+      t.size = new Size(46, 0);
       await img(t, c.logo, opts.compact ? 20 : 26);
       txt(t, c.short, 11, C.text, "heavy");
       if (!opts.compact) {
@@ -435,19 +437,15 @@ async function nhlBlock(parent, sport, opts) {
       }
     };
     await team(ev.competitors[0]);
-    m.addSpacer();
     const mid = vstack(m, 1);
-    if (ev.status === "live") {
-      const lv = ev.live || {};
-      txt(mid, `${ev.competitors[0].score || 0} : ${ev.competitors[1].score || 0}`, opts.compact ? 18 : 22, C.text, "round");
-      txt(mid, `● ${lv.intermission ? `${lv.period} INT` : `${lv.period || "LIVE"}${lv.clock ? " · " + lv.clock : ""}`}`, 9, C.live, "bold");
-      if (lv.sog && !opts.compact) txt(mid, `SOG ${lv.sog.away}–${lv.sog.home}`, 8, C.dim);
-    } else {
-      txt(mid, clock(ev.start), opts.compact ? 15 : 18, C.text, "semi");
-      txt(mid, `${relDay(ev, T.en)} · ${countdown(ev)}`, 9, C.teal, "semi");
+    const line = (fill) => { const r = hstack(mid); r.addSpacer(); fill(r); r.addSpacer(); };
+    // No live score in widgets (iOS refreshes them too rarely); the detail page has it.
+    line((r) => txt(r, clock(ev.start), opts.compact ? 15 : 18, C.text, "semi"));
+    if (ev.status === "live") line((r) => txt(r, "● LIVE", 9, C.live, "bold"));
+    else {
+      line((r) => txt(r, `${relDay(ev, T.en)} · ${countdown(ev)}`, 9, C.teal, "semi"));
     }
-    m.addSpacer();
-    await team(ev.competitors[1]);
+    await team(ev.competitors[1], true);
   } else {
     txt(parent, "No upcoming games", 11, C.dim);
   }
@@ -755,6 +753,14 @@ function gameDetailHTML(ev, id) {
   return h + "</div>";
 }
 
+// Live clock span counted down every second by the page script (data-sec at data-asof).
+function liveClockHTML(lv) {
+  if (lv.seconds == null || !lv.as_of) return esc(lv.clock || "");
+  const run = lv.running && !lv.intermission;
+  const sec = run ? Math.max(0, Math.round(lv.seconds - (Date.now() - Date.parse(lv.as_of)) / 1000)) : lv.seconds;
+  return `<span data-live-clock data-sec="${lv.seconds}" data-asof="${lv.as_of}" data-running="${run ? 1 : 0}">${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}</span>`;
+}
+
 function nhlHTML(sport) {
   const s = sport.subjects[0];
   const r = s.ranking, n = s.next, l = s.last;
@@ -769,9 +775,16 @@ function nhlHTML(sport) {
   }
   if (n && n.competitors) {
     const [a, b] = n.competitors, live = n.status === "live", lv = n.live || {};
-    const team = (c) => { const st = streakOf(c); return `<div class="team"><img src="${esc(c.logo || "")}"><b>${esc(c.short)}</b>${c.record ? `<span>${esc(c.record)}</span>` : ""}${st ? `<em class="streak ${st.code}">${st.code}${st.n}</em>` : ""}</div>`; };
+    const sit = live && lv.situation;
+    const team = (c) => {
+      const st = streakOf(c);
+      const tag = sit && sit.team === c.short
+        ? `<em class="streak pp">${esc(sit.label)}${sit.seconds != null ? " " + liveClockHTML({ seconds: sit.seconds, as_of: lv.as_of, running: lv.running, intermission: lv.intermission }) : ""}</em>`
+        : st ? `<em class="streak ${st.code}">${st.code}${st.n}</em>` : "";
+      return `<div class="team"><img src="${esc(c.logo || "")}"><b>${esc(c.short)}</b>${c.record ? `<span>${esc(c.record)}</span>` : ""}${tag}</div>`;
+    };
     const mid = live
-      ? `<div class="mid"><b class="ls">${a.score || 0}<i>:</i>${b.score || 0}</b><span class="lst"><u></u>${esc(lv.intermission ? `${lv.period} INT` : `${lv.period || "LIVE"}${lv.clock ? " · " + lv.clock : ""}`)}</span>${lv.sog ? `<em>SOG ${lv.sog.away}–${lv.sog.home}</em>` : ""}</div>`
+      ? `<div class="mid"><b class="ls">${a.score || 0}<i>:</i>${b.score || 0}</b><span class="lst"><u></u>${esc(lv.intermission ? `${lv.period} INT` : lv.period || "LIVE")}${!lv.intermission && (lv.seconds != null || lv.clock) ? ` · ${liveClockHTML(lv)}` : ""}</span>${lv.sog ? `<em>SOG ${lv.sog.away}–${lv.sog.home}${sit ? " · " + esc(sit.strength) : ""}</em>` : ""}</div>`
       : `<div class="mid"><b>${esc(clock(n.start))}</b><span>${esc(relDay(n, T.en) + " · " + countdown(n))}</span><em>${esc(shortTitle(n.title))}</em></div>`;
     h += `<div class="matchup rinkbox ${!live && isHot(n) ? "hot" : ""}" ${live && n.detail ? `onclick="gd('gd_next')"` : ""}>${RINK_SVG}${team(a)}${mid}${team(b)}</div>${live ? gameDetailHTML(n, "gd_next") : ""}`;
   }
@@ -915,7 +928,7 @@ function detailHTML(data, focus) {
   .wl{font-size:10px;font-weight:800;padding:2px 6px;border-radius:5px}.wl.win{background:rgba(48,209,88,.2);color:#30d158}.wl.loss{background:rgba(255,69,58,.2);color:#ff6961}
   .rinkbox{position:relative;overflow:hidden;border-radius:16px;background:linear-gradient(180deg,rgba(225,245,255,.09),rgba(225,245,255,.02))!important;box-shadow:inset 0 0 0 1px rgba(255,255,255,.13)}
   .rinkbox>*{position:relative;z-index:1}.rinkbox .rink{position:absolute;inset:0;width:100%;height:100%;z-index:0}
-  .team em.streak,.streak{display:inline-block;margin-top:3px;padding:0 6px;border-radius:4px;font-size:10px;font-weight:800;font-style:normal}.streak.W{background:rgba(48,209,88,.18);color:#30d158}.streak.L,.streak.OT{background:rgba(255,69,58,.18);color:#ff6961}
+  .team em.streak,.streak{display:inline-block;margin-top:3px;padding:0 6px;border-radius:4px;font-size:10px;font-weight:800;font-style:normal}.streak.W{background:rgba(48,209,88,.18);color:#30d158}.streak.pp{background:rgba(255,179,64,.22);color:#ffb340}.streak.L,.streak.OT{background:rgba(255,69,58,.18);color:#ff6961}
   .ls{font-size:32px!important}.ls i{font-style:normal;color:rgba(255,255,255,.35);margin:0 6px}.lst{display:inline-flex!important;align-items:center;gap:6px;color:#ff6961!important;font-weight:700}.lst u{width:7px;height:7px;border-radius:50%;background:#ff453a;box-shadow:0 0 0 3px rgba(255,69,58,.25)}
   .sbx{display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:13px;background:rgba(0,0,0,.3)}.sbx .side{display:flex;align-items:center;gap:7px;flex:1}.sbx .side.home{justify-content:flex-end}
   .sbx img{width:26px;height:26px;object-fit:contain}.sbx b{font-size:13px}.sbx strong{font-size:26px;min-width:18px;text-align:center}.sbx .lose{opacity:.42}
@@ -951,7 +964,7 @@ function detailHTML(data, focus) {
   const body = order.map((sp) => (sp.id === "f1" ? f1HTML(sp) : sp.id === "nhl" ? nhlHTML(sp) : h2hHTML(sp))).join("");
   const age = Math.round((Date.now() - Date.parse(data.generated_at)) / 60000);
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head>
-    <body>${body}<script>function gd(id){var e=document.getElementById(id);if(e)e.classList.toggle('open')}function tbl(k){document.querySelectorAll('.f1t').forEach(function(t){t.classList.toggle('open',t.id==='t_'+k&&!t.classList.contains('open'))})}</script><div class="foot">Updated ${age < 1 ? "just now" : age + " min ago"}</div></body></html>`;
+    <body>${body}<script>setInterval(function(){document.querySelectorAll('[data-live-clock]').forEach(function(e){var s=+e.dataset.sec;if(e.dataset.running==='1')s=Math.max(0,Math.round(s-(Date.now()-Date.parse(e.dataset.asof))/1000));e.textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0')})},1000);function gd(id){var e=document.getElementById(id);if(e)e.classList.toggle('open')}function tbl(k){document.querySelectorAll('.f1t').forEach(function(t){t.classList.toggle('open',t.id==='t_'+k&&!t.classList.contains('open'))})}</script><div class="foot">Updated ${age < 1 ? "just now" : age + " min ago"}</div></body></html>`;
 }
 
 // ---------- main ----------
@@ -967,6 +980,7 @@ const param = ((args.widgetParameter || (args.queryParameters || {}).sport || ""
 if (config.runsInWidget) {
   let w;
   try {
+    // Full (lite) refresh every 15 min; in between, a live game only patches its score/clock.
     const data = await DATA.load(CONFIG, { maxAgeMin: REFRESH_MIN, lite: true });
     TZ = data.timezone || TZ;
     w = await buildWidget(data, config.widgetFamily, param);

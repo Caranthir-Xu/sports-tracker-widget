@@ -327,14 +327,40 @@ function nhlDetail(d) {
   return { goals, shootout, stars, sog: { away: d.awayTeam.sog, home: d.homeTeam.sog } };
 }
 
-function nhlLive(d) {
+// Live clock: `seconds` remaining, true at `as_of`; clients count down while `running` (= Python _live_state).
+function nhlLive(d, asOf) {
   const pd = d.periodDescriptor || {}, clock = d.clock || {};
   const ptype = pd.periodType || "REG";
   return {
     period: ptype === "REG" ? ORDINALS[pd.number] || ptype : ptype, clock: clock.timeRemaining || null,
+    seconds: clock.secondsRemaining == null ? null : clock.secondsRemaining, as_of: iso(asOf || now()),
     intermission: !!clock.inIntermission, running: !!clock.running,
-    sog: { away: d.awayTeam.sog, home: d.homeTeam.sog }, updated_at: iso(now()),
+    sog: { away: d.awayTeam.sog, home: d.homeTeam.sog }, situation: nhlSituation(d), updated_at: iso(now()),
   };
+}
+
+// Power play / empty net (= Python _situation): {team, label, strength "5v4", seconds} or null.
+function nhlSituation(d) {
+  const sit = d.situation || {};
+  for (const [side, other] of [["homeTeam", "awayTeam"], ["awayTeam", "homeTeam"]]) {
+    const t = sit[side] || {};
+    if (t.situationDescriptions && t.situationDescriptions.length) {
+      return { team: t.abbrev, label: t.situationDescriptions.join(" "), strength: `${t.strength}v${(sit[other] || {}).strength}`,
+        seconds: sit.secondsRemaining == null ? null : sit.secondsRemaining };
+    }
+  }
+  return null;
+}
+
+// Uncached landing fetch + when it was generated (NHL CDN caches ~19 s; subtract the Age header).
+async function nhlLanding(id) {
+  const req = new Request(`${NHL}/gamecenter/${id}/landing`);
+  req.headers = { "User-Agent": UA };
+  req.timeoutInterval = 20;
+  const d = JSON.parse(await req.loadString());
+  const h = (req.response && req.response.headers) || {};
+  const age = +(h.Age || h.age || 0) || 0;
+  return [d, new Date(Date.now() - age * 1000)];
 }
 
 async function nhlEvent(g, team) {
@@ -360,13 +386,15 @@ async function nhlEvent(g, team) {
   };
   const competitors = await Promise.all([side(g.awayTeam), side(g.homeTeam)]);
   // Finished or live: goal detail (and live clock) from the gamecenter landing.
+  // Live games always get the landing (score/clock, also in lite widget runs); finished games
+  // only in full runs (goal detail is shown on the detail page only).
   let detail = null, live = null;
-  if (!LITE && (status === "final" || status === "live")) {
+  if (status === "live" || (!LITE && status === "final")) {
     try {
-      const d = await getJSON(`${NHL}/gamecenter/${g.id}/landing`);
-      detail = nhlDetail(d);
+      const [d, asOf] = await nhlLanding(g.id);
+      if (!LITE) detail = nhlDetail(d);
       if (status === "live") {
-        live = nhlLive(d);
+        live = nhlLive(d, asOf);
         competitors[0].score = d.awayTeam.score; competitors[1].score = d.homeTeam.score;
       }
     } catch (e) { /* optional extra */ }

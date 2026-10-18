@@ -9,7 +9,7 @@ function get(url, headers, n = 0) {
   return new Promise((res, rej) => {
     const req = https.get(url, { headers }, (r) => {
       if ([301, 302, 307, 308].includes(r.statusCode) && n < 5) return res(get(new URL(r.headers.location, url).href, headers, n + 1));
-      let b = ""; r.setEncoding("utf8"); r.on("data", (c) => (b += c)); r.on("end", () => res({ code: r.statusCode, body: b }));
+      let b = ""; r.setEncoding("utf8"); r.on("data", (c) => (b += c)); r.on("end", () => res({ code: r.statusCode, body: b, headers: r.headers }));
     });
     req.on("error", rej); req.setTimeout(25000, () => req.destroy(new Error("timeout")));
   });
@@ -23,7 +23,7 @@ class Request {
   constructor(u) { this.url = u; this.headers = {}; }
   async loadString() {
     const r = /bwfbadminton/.test(this.url) ? await viaCffi(this.url) : await get(this.url, this.headers);
-    this.response = { statusCode: r.code };
+    this.response = { statusCode: r.code, headers: r.headers || {} };
     return r.body;
   }
 }

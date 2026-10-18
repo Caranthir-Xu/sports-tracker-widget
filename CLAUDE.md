@@ -57,6 +57,15 @@ runs from a runtime copy:
   BWF h2h/match + draw paths + top-500 ranks, F1 tables — keeps previous tables, fetches only
   next_round). A full run (detail page, `force: true`) fetches everything. A widget run that runs
   out of memory/time is killed silently and iOS keeps the previous snapshot — keep widget work lean.
+- iOS live NHL: only the detail page shows the live score (full run on open, clock ticks every
+  second, PP/EN pill). Widgets show NO live score — just start time + "● LIVE" — because iOS
+  throttles widget refreshes (asked for 1 min, got 5–15+ min; frozen scores looked broken, and
+  per-minute full refreshes got the large widget killed). Widgets refresh every `REFRESH_MIN`.
+  Widget background images (`bandsBackground`, `rinkImage`) render at 1x to save memory.
+  Desktop PP/EN: amber "PP m:ss" pill counting down under the team; strength in the centre line.
+- NHL widget matchup: equal fixed-width team columns + every middle row centred with spacers
+  (a vstack's own centring was not reliable on device). Scriptable stacks only have
+  top/center/bottomAlignContent — no left/right (a `rightAlignContent()` call crashed the widget).
 - After installing, iOS keeps showing each home-screen widget's old snapshot until it refreshes
   (each widget separately; re-pick the script in Edit Widget to force it).
 - F1 on iOS mirrors the desktop racing style. Widgets can't slant text, so they use
@@ -112,6 +121,8 @@ Event = { title, subtitle, start, time_precision ("exact"|"date"),
           live: { period ("1ST".."3RD"|"OT"|"SO"), clock, seconds, as_of, intermission, running,
                   sog: {away, home}, updated_at } | null,   # NHL, written by fetch.py --live while a game is on
           # seconds = clock seconds remaining, true at as_of (fetch time minus the CDN Age header)
+          # live.situation = { team, label ("PP"/"EN"), strength "5v4", seconds } | null — power play /
+          #   empty net from landing `situation`; its seconds count down with the game clock
           url, location, image (e.g. country flag) — each may be null,
           competitors: [ Competitor ] | null,                       # head-to-head only
           sessions: [ { name, start, status, result } ] | null }   # F1 weekend only

@@ -213,6 +213,12 @@ export const className = `
   .live-state { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 700; color: #ff6961; }
   .live-state .dot { width: 6px; height: 6px; border-radius: 50%; background: #ff453a; box-shadow: 0 0 0 3px rgba(255, 69, 58, 0.25); }
   .live-sog { font-size: 9px; color: rgba(255, 255, 255, 0.45); margin-top: 2px; }
+  .pp {
+    display: inline-flex; align-items: center; gap: 4px; margin-top: 3px; padding: 1px 6px; border-radius: 5px;
+    font-size: 9px; font-weight: 800; background: rgba(255, 179, 64, 0.22); color: #ffb340;
+    box-shadow: inset 0 0 0 0.5px rgba(255, 179, 64, 0.5);
+  }
+  .pp span { font-weight: 700; font-variant-numeric: tabular-nums; }
   .sb {
     display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px; cursor: pointer;
     background: rgba(0, 0, 0, 0.3); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.1);
@@ -868,11 +874,17 @@ function Matchup({ ev, tz, L, zh, rink }) {
       <Img src={c.logo} cls={isFlag(c.logo) ? "flag" : ""} />
       <div className="ab ellipsis">{zh && c.name_zh ? c.name_zh : c.short}</div>
       {c.record && <div className="rec">{c.record}</div>}
-      {rink && streak(c)[1] ? <div className={`streak ${streak(c)[1]}`}>{streak(c)[1]}{streak(c)[2]}</div>
+      {sit && sit.team === c.short ? (
+        // Power play / empty net: penalty time counts down with the game clock.
+        <div className="pp">{sit.label}{sit.seconds != null && (
+          <LiveClock lv={{ seconds: sit.seconds, as_of: lv.as_of, running: lv.running, intermission: lv.intermission }} />
+        )}</div>
+      ) : rink && streak(c)[1] ? <div className={`streak ${streak(c)[1]}`}>{streak(c)[1]}{streak(c)[2]}</div>
         : c.form && <div className="frm">{c.form}</div>}
     </div>
   );
   const lv = ev.live;
+  const sit = live && lv && lv.situation;
   const title = zh ? zhTournament(ev.title) : shortTitle(ev.title);
   return (
     <div className={`matchup ${rink ? "rink" : ""} ${live && ev.detail ? "live" : ""} ${!live && isHot(ev, tz) ? "hot" : ""}`}
@@ -887,7 +899,7 @@ function Matchup({ ev, tz, L, zh, rink }) {
             {lv ? (lv.intermission ? <span>{lv.period} INT · <LiveClock lv={lv} /></span>
               : <span>{lv.period}{lv.clock || lv.seconds != null ? " · " : ""}<LiveClock lv={lv} /></span>) : L.live}
           </div>
-          {lv && lv.sog && <div className="live-sog">SOG {lv.sog.away}–{lv.sog.home}</div>}
+          {lv && lv.sog && <div className="live-sog">SOG {lv.sog.away}–{lv.sog.home}{sit ? ` · ${sit.strength}` : ""}</div>}
         </div>
       ) : (
         <div className="mid">

@@ -32,8 +32,11 @@ class Node_ { constructor(kind) { this.kind = kind; this.kids = []; this.dir = "
   addStack() { const s = new Node_("stack"); this.kids.push(s); return s; }
   addText(t) { const n = new Node_("text"); n.t = t; n.centerAlignText = () => (n.center = true); this.kids.push(n); return n; }
   addImage(i) { const n = new Node_("img"); n.i = i; this.kids.push(n); return n; }
+  addDate(d) { // WidgetDate with applyTimerStyle → render the remaining m:ss at render time
+    const n = new Node_("text"); const sec = Math.max(0, Math.round((d - Date.now()) / 1000));
+    n.t = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`; n.applyTimerStyle = () => {}; this.kids.push(n); return n; }
   addSpacer(l) { const n = new Node_("spacer"); n.l = l; this.kids.push(n); return n; }
-  layoutHorizontally() { this.dir = "row"; } layoutVertically() { this.dir = "column"; } centerAlignContent() {}
+  layoutHorizontally() { this.dir = "row"; } layoutVertically() { this.dir = "column"; } centerAlignContent() { this.align = "center"; } topAlignContent() { this.align = "flex-start"; }
   setPadding(t, l, b, r) { this.pad = [t, l, b, r]; } }
 class ListWidget extends Node_ { constructor() { super("widget"); this.pad = [16, 16, 16, 16]; } }
 const SIZES = { small: [158, 158], medium: [338, 158], large: [338, 354] };
@@ -44,7 +47,7 @@ function html(n, dir) {
     return `<div style="font-size:${f.s}px;font-weight:${f.w};${f.fam ? `font-family:${f.fam};` : ""}color:${n.textColor ? n.textColor.css() : "#fff"};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0${n.center ? ";text-align:center" : ""}">${esc(n.t)}</div>`; }
   if (n.kind === "img") { const w = n.imageSize ? n.imageSize.width : 20, h = n.imageSize ? n.imageSize.height : 20;
     return n.i.svg ? n.i.svg : `<img src="${n.i.url}" style="width:${w}px;height:${h}px;object-fit:contain;flex:none">`; }
-  const st = [`display:flex;flex-direction:${n.dir};align-items:${n.dir === "row" ? "center" : "flex-start"};min-width:0`];
+  const st = [`display:flex;flex-direction:${n.dir};align-items:${n.align || (n.dir === "row" ? "center" : "flex-start")};min-width:0`];
   if (n.spacing) st.push(`gap:${n.spacing}px`);
   if (n.pad) st.push(`padding:${n.pad[0]}px ${n.pad[3]}px ${n.pad[2]}px ${n.pad[1]}px`);
   const bgs = [];
@@ -54,6 +57,9 @@ function html(n, dir) {
   if (bgs.length) st.push(`background:${bgs.join(",")}`);
   if (n.cornerRadius) st.push(`border-radius:${n.cornerRadius}px;overflow:hidden`);
   if (n.kind === "stack" && dir === "column") st.push("align-self:stretch");
+  // Like iOS: a stack holding a flexible spacer grows to fill its row.
+  const flexy = (x) => x.kids && x.kids.some((k) => (k.kind === "spacer" && k.l == null) || (k.kind === "stack" && !k.size && flexy(k)));
+  if (n.kind === "stack" && dir === "row" && !n.size && flexy(n)) st.push("flex:1");
   if (n.size) st.push(`${n.size.width > 0 ? `width:${n.size.width}px;` : "align-self:stretch;"}${n.size.height > 0 ? `height:${n.size.height}px;` : ""}box-sizing:border-box;flex:none;overflow:hidden`);
   if (n.kind === "widget") { const [w, h] = SIZES[n.family]; st.push(`width:${w}px;height:${h}px;box-sizing:border-box;border-radius:22px;overflow:hidden;font-family:-apple-system,'PingFang SC'`); }
   return `<div style="${st.join(";")}">${n.kids.map((k) => html(k, n.dir)).join("")}</div>`;
@@ -70,7 +76,7 @@ vm.createContext(ctx);
 vm.runInContext(src, ctx);
 (async () => {
   let out = "<meta charset=utf-8><body style='background:#5b7f96;display:flex;flex-wrap:wrap;gap:20px;padding:20px;align-items:flex-start'>";
-  for (const [fam, p] of [["small", null], ["medium", "f1"], ["medium", "nhl"], ["medium", "badminton"], ["large", null]]) {
+  for (const [fam, p] of [["small", null], ["small", "nhl"], ["medium", "f1"], ["medium", "nhl"], ["medium", "badminton"], ["large", null]]) {
     const w = fam === "small" ? await ctx.smallWidget(data, p) : fam === "large" ? await ctx.largeWidget(data) : await ctx.mediumWidget(data, p);
     w.family = fam;
     out += `<div><div style="color:#fff;font:12px sans-serif">${fam} ${p || ""}</div>${html(w)}</div>`;

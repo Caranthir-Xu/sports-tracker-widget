@@ -193,6 +193,19 @@ def _landing_live(game_id):
         return json.load(r), now_utc() - timedelta(seconds=age)
 
 
+def _situation(d):
+    """Power play / empty net: {team, label ("PP"|"EN"|...), strength "5v4", seconds} or None."""
+    sit = d.get("situation") or {}
+    for side in ("homeTeam", "awayTeam"):
+        t = sit.get(side) or {}
+        if t.get("situationDescriptions"):
+            other = sit.get("awayTeam" if side == "homeTeam" else "homeTeam") or {}
+            return {"team": t.get("abbrev"), "label": " ".join(t["situationDescriptions"]),
+                    "strength": f"{t.get('strength')}v{other.get('strength')}",
+                    "seconds": sit.get("secondsRemaining")}
+    return None
+
+
 def _live_state(d, as_of=None):
     """Period / clock / shots from a gamecenter landing of a live game. Clients count the
     clock down from `seconds` at `as_of` while `running`, and re-sync on each poll."""
@@ -207,6 +220,7 @@ def _live_state(d, as_of=None):
         "intermission": bool(clock.get("inIntermission")),
         "running": bool(clock.get("running")),
         "sog": {"away": d["awayTeam"].get("sog"), "home": d["homeTeam"].get("sog")},
+        "situation": _situation(d),  # counts down with the game clock, like `seconds`
         "updated_at": iso(now_utc()),
     }
 
