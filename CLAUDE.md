@@ -218,6 +218,11 @@ Event also has:
   ~19 s (`max-age=19`), job every 20 s, widget re-read every 15 s → live data ≲ 40 s behind.
   Was 60 s + 60 s, which looked "stuck" during play. Python's default urllib UA gets 403 from
   the NHL CDN; providers send their own UA.
+- Post-game standings: the NHL updates standings/now a few minutes after the final horn, so a
+  run right after a game can still have the old record. `fetch_subject` sets `ranking.pending`
+  when standings GP < regular-season games final in the schedule; while pending (≤ 8 h after
+  the game) the live job re-checks standings each tick and, once the record changes, returns a
+  full `fetch_subject()` + `refresh_sport` → fetch.py also refreshes the sport `tables`.
 - Live clock countdown: `LiveClock` renders a span with data-sec / data-asof / data-running and a
   module-level 1 s `setInterval` (`window.__sportsClockTicker`) counts it down locally while
   running; each 15 s re-render replaces the span → corrected by the latest poll (whistles cause

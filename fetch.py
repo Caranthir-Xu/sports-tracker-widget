@@ -157,6 +157,13 @@ def live_main():
                 continue
             if not update or subj is None:
                 continue
+            if update.pop("refresh_sport", False) and hasattr(provider, "fetch_sport"):
+                entry = next((sp for sp in data["sports"] if sp["id"] == sport["id"]), None)
+                try:
+                    if entry is not None:
+                        entry.update(provider.fetch_sport(sport), tables_stale=False)
+                except Exception:
+                    traceback.print_exc(file=sys.stderr)
             profile = update.pop("profile", None)
             subj.update(update)
             if profile:

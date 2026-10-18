@@ -151,11 +151,15 @@ def _playoff_note(t):
     return f"WC{n} · {back} pts back of WC2{gp}"
 
 
-def _ranking(team):
+def _ranking(team, played=None):
+    """`played` = regular-season games the schedule already shows as final. The NHL updates
+    standings a few minutes after the final horn; until then `pending` is set and the live
+    job keeps re-checking (see refresh_live)."""
     t = _team_row(team)
     if not t:
         return None
     return {
+        "pending": bool(played and t["gamesPlayed"] < played),
         "label": t["divisionName"],
         "position": t["divisionSequence"],
         "points": t["points"],
@@ -174,7 +178,7 @@ def fetch_subject(subj):
     me = next((g[k] for g in games for k in ("homeTeam", "awayTeam")
                if g[k]["abbrev"] == team), {})
     return {
-        "ranking": _ranking(team),
+        "ranking": _ranking(team, sum(1 for g in done if g.get("gameType") == 2)),
         "next": _event(nxt, team) if nxt else None,
         "last": _event(done[-1], team) if done else None,
         "profile": {"image": me.get("darkLogo") or me.get("logo")},
@@ -229,12 +233,28 @@ def _live_state(d, as_of=None):
     }
 
 
+STANDINGS_WAIT = timedelta(hours=8)  # stop waiting for post-game standings after this
+
+
+def _standings_caught_up(team, current):
+    """True once standings include a game that already went final (ranking.pending)."""
+    rk, last = (current or {}).get("ranking") or {}, (current or {}).get("last") or {}
+    if not rk.get("pending") or not last.get("start"):
+        return False
+    if now_utc() - parse_dt(last["start"]) > STANDINGS_WAIT:
+        return False
+    t = _team_row(team)
+    return bool(t) and f"{t['wins']}-{t['losses']}-{t['otLosses']}" != rk.get("detail")
+
+
 def refresh_live(subj, current):
     """Update the subject's next game while it is live; None when there is nothing to do.
 
     Makes no request unless a game is live or within the polling window. When the game
     goes final, returns a full fetch_subject() so 'last'/'next' roll over.
     """
+    if _standings_caught_up(subj["abbrev"], current):
+        return dict(fetch_subject(subj), refresh_sport=True)  # new record/form + tables too
     ev = (current or {}).get("next")
     if not ev or not ev.get("id"):
         return None
