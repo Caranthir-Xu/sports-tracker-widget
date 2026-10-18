@@ -708,8 +708,33 @@ async function badmintonSubject(subj) {
 // fetch all + stale fallback + cache
 // =====================================================================
 
+// World top 10 per followed event, keyed by event code (= Python badminton.fetch_sport).
+// Detail-page only: a lite (widget) run keeps the previous tables.
+const RANK_TOP = 10;
+const FLAG_SVG = "https://extranet.bwf.sport/docs/flags-svg/";
+async function bwfSport(sportCfg) {
+  if (LITE) return {};
+  await loadZh();
+  const plain = (html) => String(html || "").replace(/<[^>]+>/g, "").trim();
+  const events = [...new Set(sportCfg.subjects.map((s) => s.event))];
+  const tables = {};
+  await Promise.all(events.map(async (ev) => {
+    const mine = new Set(sportCfg.subjects.filter((s) => s.event === ev).map((s) => String(s.player_id)));
+    const d = await bwf("vue-rankingtable", { rankId: 2, catId: RANK_CAT[ev], publicationId: 0, doubles: String(ev.endsWith("D")), searchKey: "", pageKey: RANK_TOP, page: 1, drawCount: 1 });
+    tables[ev] = { title: `World Ranking · ${ev}`, subtitle: `Top ${RANK_TOP}`, rows: d.results.data.slice(0, RANK_TOP).map((r) => {
+      const [en, zh] = names([r.player1_model, r.player2_model].filter(Boolean).map((m) => plain(m.name_display_bold)));
+      const c = r.p1_country_model || {};
+      return { pos: r.rank, code: null, name: en, name_zh: zh, logo: c.flag_name_svg ? FLAG_SVG + c.flag_name_svg : null,
+        team: c.name || null, color: null, value: Math.round(+r.points).toLocaleString("en-US"),
+        extra: r.rank_previous ? r.rank_previous - r.rank : null,
+        self: mine.has(String(r.player1_id)) || mine.has(String(r.player2_id)) };
+    }) };
+  }));
+  return { tables };
+}
+
 const PROVIDERS = { f1: f1Subject, nhl: nhlSubject, badminton: badmintonSubject };
-const SPORT_PROVIDERS = { f1: f1Sport, nhl: nhlSport }; // optional sport-level data, like fetch_sport() in Python
+const SPORT_PROVIDERS = { f1: f1Sport, nhl: nhlSport, badminton: bwfSport }; // optional sport-level data, like fetch_sport() in Python
 const PROFILE_KEYS = ["team", "color", "image", "badge", "country"];
 
 function withTimeout(p, ms) {

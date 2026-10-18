@@ -334,3 +334,46 @@ def fetch_subject(subj):
         "last": _match_event(last_m, pid) if last_m else None,
         "profile": {"image": _flag(last_m, me) if last_m else None},
     }
+
+
+# ---------- sport-level tables (fetch.py merges these into the sport entry) ----------
+
+RANK_TOP = 10
+
+
+def _plain(html):
+    """'<span class="name-2">KIM</span> <span class="name-1">Won Ho</span>' -> 'KIM Won Ho'."""
+    return re.sub(r"<[^>]+>", "", html or "").strip()
+
+
+def _top_table(event_name, mine):
+    """World top 10 for one event; `mine` = followed player ids (str) to highlight."""
+    data = get("vue-rankingtable", rankId=2, catId=RANK_CAT[event_name], publicationId=0,
+               doubles=str(event_name.endswith("D")).lower(), searchKey="",
+               pageKey=RANK_TOP, page=1, drawCount=1)["results"]["data"]
+    rows = []
+    for r in data[:RANK_TOP]:
+        players = [m for m in (r.get("player1_model"), r.get("player2_model")) if m]
+        en, zh = _names([_plain(m.get("name_display_bold")) for m in players])
+        country = r.get("p1_country_model") or {}
+        prev = r.get("rank_previous")
+        rows.append({
+            "pos": r["rank"], "code": None, "name": en, "name_zh": zh,
+            "logo": FLAGS + country["flag_name_svg"] if country.get("flag_name_svg") else None,
+            "team": country.get("name"), "color": None,
+            "value": f"{round(float(r['points'])):,}",
+            "extra": prev - r["rank"] if prev else None,  # + = up since last week
+            "self": bool(mine & {str(r["player1_id"]), str(r["player2_id"])}),
+        })
+    return {"title": f"World Ranking · {event_name}", "subtitle": f"Top {RANK_TOP}", "rows": rows}
+
+
+def fetch_sport(sport_cfg):
+    """BWF world top 10 per followed event (MD, WS, ...), keyed by event code."""
+    tables = {}
+    for subj in sport_cfg["subjects"]:
+        ev = subj["event"]
+        mine = {str(s["player_id"]) for s in sport_cfg["subjects"] if s["event"] == ev}
+        if ev not in tables:
+            tables[ev] = _top_table(ev, mine)
+    return {"tables": tables}

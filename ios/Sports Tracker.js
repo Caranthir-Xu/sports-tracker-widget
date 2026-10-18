@@ -848,8 +848,16 @@ function h2hHTML(sport) {
   for (const s of sport.subjects) {
     const r = s.ranking, n = s.next, l = s.last;
     const flag = s.country ? `https://img.bwfbadminton.com/image/upload/v2/assets/flag-circle-svg-custom/${s.country}.png` : s.image;
-    h += `<div class="subj"><div class="sh">${flag ? `<img src="${esc(flag)}">` : ""}<b>${esc(s.name)}</b>${r ? `<span class="rank">${esc(zh ? ZH_EVENTS[r.label] || r.label : r.label)} <b>#${r.position}</b>${r.change ? `<i class="${r.change > 0 ? "up" : "down"}">${r.change > 0 ? "▲" + r.change : "▼" + -r.change}</i>` : ""}</span>` : ""}</div>`;
+    // Badminton: tapping the rank opens the world top 10 for that event (sport tables).
+    const top = r && sport.tables ? sport.tables[r.label] : null;
+    const tid = `wr_${esc(s.id)}`;
+    h += `<div class="subj"><div class="sh">${flag ? `<img src="${esc(flag)}">` : ""}<b>${esc(s.name)}</b>${r ? `<span class="rank ${top ? "tap" : ""}" ${top ? `onclick="gd('${tid}')"` : ""}>${esc(zh ? ZH_EVENTS[r.label] || r.label : r.label)} <b>#${r.position}</b>${r.change ? `<i class="${r.change > 0 ? "up" : "down"}">${r.change > 0 ? "▲" + r.change : "▼" + -r.change}</i>` : ""}</span>` : ""}</div>`;
     if (r && r.note) h += `<div class="note">${esc(r.note)}</div>`;
+    if (top) {
+      const chg = (n) => (n == null ? "" : n > 0 ? `<i class="up">▲${n}</i>` : n < 0 ? `<i class="down">▼${-n}</i>` : "–");
+      h += `<div class="gd wrk" id="${tid}"><div class="nsth"><b>${zh ? `世界排名 · ${ZH_EVENTS[r.label] || r.label}` : esc(top.title)}</b><span>${zh ? `前 ${top.rows.length}` : esc(top.subtitle || "")}</span></div>`
+        + top.rows.map((x) => `<div class="nstr ${x.self ? "me" : ""}"><span class="p">${x.pos}</span><img class="fl" src="${esc(x.logo || "")}"><span class="nm">${esc(zh && x.name_zh ? x.name_zh : x.name)}</span><span class="cg">${chg(x.extra)}</span><span class="wp">${esc(x.value)}</span></div>`).join("") + `</div>`;
+    }
     if (n && n.competitors) {
       const [a, b] = n.competitors;
       const team = (c) => `<div class="team"><img src="${esc(c.logo || "")}"><b>${esc(cname(c, zh))}</b>${c.record ? `<span>${esc(c.record)}</span>` : ""}${c.form ? `<em>${esc(c.form)}</em>` : ""}</div>`;
@@ -952,7 +960,9 @@ function detailHTML(data, focus) {
   .chart{display:block;width:100%;height:110px}.legend2{display:flex;gap:14px;font-size:11px;color:rgba(255,255,255,.6);margin:4px 0 6px}.legend2 i{display:inline-block;width:12px;height:2px;margin-right:5px;vertical-align:4px}
   .stat2{display:flex;align-items:center;gap:8px;height:24px;font-size:13px}.stat2 .lbl{width:92px;font-size:12px;color:rgba(255,255,255,.55)}.stat2 .v{width:26px;text-align:center;font-weight:700}.stat2 .gold{color:#ffd76a}
   .stat2 .bar{flex:1;height:6px;display:flex;gap:2px}.stat2 .bar b{display:block;height:100%;border-radius:3px}.nopts{font-size:12px;color:rgba(255,255,255,.4)}
-  .rank.tap b{border-bottom:1px dotted rgba(95,211,218,.7)}
+  .rank.tap b{border-bottom:1px dotted rgba(95,211,218,.7)}.card.badminton .rank.tap b{border-bottom-color:rgba(255,215,106,.7)}
+  .wrk .nstr img.fl{width:20px;height:14px;border-radius:2px;object-fit:cover}.wrk .nstr .nm{color:rgba(255,255,255,.85)}.wrk .nstr.me{background:rgba(255,215,106,.16);box-shadow:inset 3px 0 0 #ffd76a}
+  .wrk .cg{width:26px;text-align:right;font-size:10px;color:rgba(255,255,255,.4)}.wrk .wp{width:62px;text-align:right;font-weight:700}
   .nsth{display:flex;justify-content:space-between;align-items:baseline;margin:10px 0 4px}.nsth:first-child{margin-top:0}.nsth b{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.8)}.nsth span{font-size:10px;color:rgba(255,255,255,.4)}
   .nstc{display:flex;gap:7px;padding:0 7px;font-size:9px;font-weight:700;color:rgba(255,255,255,.35)}.nstc .ab{width:54px}
   .nstr{display:flex;align-items:center;gap:7px;height:26px;padding:0 7px;border-radius:7px;font-size:13px}.nstr img{width:20px;height:20px;object-fit:contain}

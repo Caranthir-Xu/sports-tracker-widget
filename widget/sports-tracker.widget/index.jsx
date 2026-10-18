@@ -333,6 +333,12 @@ export const className = `
   .nst-r .rec, .nst-cols .rec { width: 42px; text-align: right; color: rgba(255, 255, 255, 0.6); }
   .nst-r .pt, .nst-cols .pt { width: 20px; text-align: right; font-weight: 700; }
   .nst-cols .ab { width: 46px; }
+  .nst.bwf .nst-r img.flag { width: 16px; height: 11px; border-radius: 2px; object-fit: cover; }
+  .nst.bwf .nst-r .nm { color: rgba(255, 255, 255, 0.8); }
+  .nst.bwf .nst-r.me { background: rgba(255, 215, 106, 0.16); box-shadow: inset 2px 0 0 #ffd76a; }
+  .nst.bwf .chgc { width: 22px; text-align: right; font-size: 9px; }
+  .nst.bwf .pts { width: 52px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .card.badminton .rank.click b { border-bottom-color: rgba(255, 215, 106, 0.6); }
 
   /* ---- San Jose Sharks theme: teal card, light-teal accents ---- */
   .card.nhl .mid .sm.dim, .card.nhl .rank b, .card.nhl .card-h .accent, .card.nhl .note { color: ${TEAL}; }
@@ -462,7 +468,8 @@ function toggleFold(e, sportId, auto) {
 }
 
 const Chevron = ({ sport, tz, collapsed }) => (
-  <span className="chev" onMouseDown={(e) => e.stopPropagation()}
+  // Fast repeated clicks are a dblclick: keep it from reaching the header's position reset.
+  <span className="chev" onMouseDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}
         onClick={(e) => toggleFold(e, sport.id, !isActive(sport, tz))}>{collapsed ? "▸" : "▾"}</span>
 );
 
@@ -1085,6 +1092,24 @@ function NHLStandings({ tables }) {
 
 // ---------- badminton extras ----------
 
+// World top 10 for the subject's event, opened by clicking the rank (shares the .nst panel).
+function BWFRanking({ t, zh, event }) {
+  return (
+    <div className="nst bwf">
+      <div className="nst-h"><b>{zh ? `世界排名 · ${ZH_EVENTS[event] || event}` : t.title}</b><span>{zh ? `前 ${t.rows.length}` : t.subtitle}</span></div>
+      {t.rows.map((row) => (
+        <div className={`nst-r ${row.self ? "me" : ""}`} key={row.pos}>
+          <span className="p">{row.pos}</span>
+          <Img src={row.logo} cls="flag" />
+          <span className="nm">{zh && row.name_zh ? row.name_zh : row.name}</span>
+          <span className="chgc"><Change n={row.extra} /></span>
+          <span className="pts">{row.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const Shuttle = () => (
   <svg className="shuttle" viewBox="0 0 24 24">
     <path d="M12 22a3 3 0 0 0 3-3v-1H9v1a3 3 0 0 0 3 3z" fill="#ffd76a" />
@@ -1280,8 +1305,9 @@ const Change = ({ n }) =>
 
 function Subject({ s, tz, L, zh, sportId, tables }) {
   const nhl = sportId === "nhl";
-  const canStand = nhl && tables && tables.division;
   const r = s.ranking;
+  const bwfTable = sportId === "badminton" && tables && r ? tables[r.label] : null;
+  const canStand = (nhl && tables && tables.division) || bwfTable;
   const { next, last } = s;
   const hasGames = last && last.competitors && last.competitors.some((c) => c.games);
   const round = last && last.subtitle ? last.subtitle.split(" vs ")[0] : "";
@@ -1298,7 +1324,8 @@ function Subject({ s, tz, L, zh, sportId, tables }) {
         </span>}
       </div>
       {r && r.note && <div className="note">{r.note}</div>}
-      {canStand && <NHLStandings tables={tables} />}
+      {nhl && canStand && <NHLStandings tables={tables} />}
+      {bwfTable && <BWFRanking t={bwfTable} zh={zh} event={r.label} />}
 
       {next && next.competitors ? (
         <div>

@@ -9,7 +9,7 @@ client (Übersicht now, iOS Scriptable later) only reads `data.json`.
 - `fetch.py` — runs every provider, stale fallback, atomic write of `data.json`
 - `providers/<sport>.py` — one module per sport, each exposes
   `fetch_subject(subject_cfg) -> {"ranking", "next", "last"}` and raises on failure;
-  optionally `fetch_sport(sport_cfg) -> dict` merged into the sport entry (F1, NHL: `tables`)
+  optionally `fetch_sport(sport_cfg) -> dict` merged into the sport entry (F1, NHL, badminton: `tables`)
 - `providers/common.py` — `get_json` (urllib, cached per run), `event()`/`result()` builders
 - `widget/sports-tracker.widget/index.jsx` — Übersicht widget (display only)
 - `launchd/install.sh` + `*.plist.template` — scheduled jobs: `com.adaxu.sports-tracker`
@@ -134,6 +134,9 @@ Sport entry may also have (F1 and NHL):
   # F1 last_race value = winner time / gap / "+N Lap(s)" / "DNF", extra = "+pts"; standings value = points, extra = "NW"
   # NHL tables = { division, wildcard }: rows add logo, gp, cut (last playoff spot: 3rd in division / WC2);
   #   value = points, extra = "W-L-OT". Built from the same standings/now call (no extra request).
+  # Badminton tables = { <event code e.g. MD/WS>: Table }: BWF world top 10 (one rankingtable call
+  #   per followed event); rows add name_zh, logo = flag, team = country, value = points ("95,089"),
+  #   extra = weekly rank change (int, + = up), self = followed pair/player.
 
 Competitor = { name, short, name_zh, logo, score, games: [int] | null, winner, self,
                record, form }   # record/form: NHL pre-game only ("4-3-0", "L10 4-3-0 · W1")
@@ -240,6 +243,10 @@ Event also has:
   highlighted, red rule under the last playoff spot).
 - Übersicht must be running for the desktop widget: it lives in /Applications and needs
   "Launch Übersicht when I login" ticked (the user's setting). The launchd data job is separate.
+- Badminton rank ("男双 #2") is clickable like the NHL rank: toggles `BWFRanking`, the world top 10
+  for that event (Chinese names, flags, weekly change, points; followed entry highlighted gold).
+  iOS: `bwfSport()` in Sports Data.js (full runs only; lite runs keep the previous tables), detail
+  page rank tap → `gd('wr_<subject id>')` panel (class `wrk`; `.wr` is taken by the candidate list).
 - Badminton card: court-green gradient, shuttlecock icon in the header, draw path as a vertical
   timeline (solid dot = confirmed opponent, hollow = possible), last match board on faint court lines
   (`CourtLines`); clicking it toggles `BadmintonDetail`: duration/venue chips, `ScoreChart` (one
