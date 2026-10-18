@@ -318,8 +318,13 @@ function nhlDetail(d) {
       });
     });
   });
+  // Some attempts come without a player.
+  const soName = (e) => {
+    const first = (e.firstName || {}).default || "", last = (e.lastName || {}).default;
+    return first && last ? `${first[0]}. ${last}` : last || "—";
+  };
   const so = summary.shootout && !Array.isArray(summary.shootout) ? summary.shootout.events || [] : [];
-  const shootout = so.map((e) => ({ team: e.teamAbbrev.default, player: `${e.firstName.default[0]}. ${e.lastName.default}`, result: e.result, winner: !!e.gameWinner }));
+  const shootout = so.map((e) => ({ team: e.teamAbbrev.default, player: soName(e), result: e.result, winner: !!e.gameWinner }));
   const stars = (summary.threeStars || []).map((st) => ({
     star: st.star, team: st.teamAbbrev, name: st.name.default, pos: st.position,
     line: st.position === "G" ? `${(st.savePctg || 0).toFixed(3).replace(/^0/, "")} SV%` : `${st.goals || 0}G ${st.assists || 0}A`,

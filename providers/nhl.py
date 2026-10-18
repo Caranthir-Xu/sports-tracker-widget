@@ -61,8 +61,12 @@ def _detail_from_landing(d):
                 "empty_net": g.get("goalModifier") == "empty-net",
                 "score": f"{g['awayScore']}–{g['homeScore']}",       # away–home, like competitors
             })
+    def so_name(e):  # some attempts come without a player
+        first = (e.get("firstName") or {}).get("default") or ""
+        last = (e.get("lastName") or {}).get("default")
+        return f"{first[:1]}. {last}" if first and last else (last or "—")
     shootout = [{
-        "team": e["teamAbbrev"]["default"], "player": f"{e['firstName']['default'][0]}. {e['lastName']['default']}",
+        "team": e["teamAbbrev"]["default"], "player": so_name(e),
         "result": e["result"], "winner": bool(e.get("gameWinner")),
     } for e in (summary.get("shootout") or {}).get("events", [])] if isinstance(summary.get("shootout"), dict) else []
     stars = []
