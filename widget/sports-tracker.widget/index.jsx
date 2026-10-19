@@ -390,9 +390,17 @@ export const className = `
 
 const POS_KEY = "sports-tracker-pos";
 
+// Keep the widget on this screen: an offset saved on a wider/second display (or dragged past
+// the edge) would otherwise put it entirely off screen. Origin = top 10px, right 14px, 344px wide.
+function clampPos(p) {
+  if (typeof window === "undefined" || !window.innerWidth) return p;
+  const minX = -(window.innerWidth - 14 - 344), maxY = window.innerHeight - 60;
+  return { x: Math.min(14, Math.max(minX, p.x || 0)), y: Math.min(maxY, Math.max(-10, p.y || 0)) };
+}
+
 function loadPos() {
   try {
-    return JSON.parse(localStorage.getItem(POS_KEY)) || { x: 0, y: 0 };
+    return clampPos(JSON.parse(localStorage.getItem(POS_KEY)) || { x: 0, y: 0 });
   } catch (e) {
     return { x: 0, y: 0 };
   }
@@ -410,7 +418,7 @@ function startDrag(e) {
   const sx = e.clientX, sy = e.clientY;
   let pos = start;
   const move = (ev) => {
-    pos = { x: start.x + ev.clientX - sx, y: start.y + ev.clientY - sy };
+    pos = clampPos({ x: start.x + ev.clientX - sx, y: start.y + ev.clientY - sy });
     root.style.transform = `translate(${pos.x}px, ${pos.y}px)`;
   };
   const up = () => {

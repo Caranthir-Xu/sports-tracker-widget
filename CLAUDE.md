@@ -259,6 +259,8 @@ Event also has:
   opponents stay as BWF gives them (English). The board shows the subject's `short` for our side.
 - Position: drag any card header; offset saved in localStorage key `sports-tracker-pos`
   and applied as a transform on `[data-root]`; double-click a header resets it.
+  `clampPos` keeps the offset on the current screen (an offset of x −1532 saved on a wider /
+  second display once put the whole widget off the 1512-pt laptop screen).
 - Avoid `??` / `?.` in index.jsx — Übersicht 1.6 bundles an old Babel.
 - The in-app browser pane throttles hidden tabs, so a preview may stay blank until the
   next 60 s refresh — not a widget bug.
