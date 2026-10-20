@@ -355,6 +355,23 @@ function nhlDetail(d) {
   return { goals, shootout, stars, sog: { away: d.awayTeam.sog, home: d.homeTeam.sog } };
 }
 
+// Team game stats as two-sided bars (= Python _team_stats): display strings + numbers for the bar.
+const STAT_ROWS = [["powerPlay", "Power play"], ["pim", "Penalty min"], ["faceoffWinningPctg", "Faceoffs"],
+  ["hits", "Hits"], ["blockedShots", "Blocked shots"], ["giveaways", "Giveaways"], ["takeaways", "Takeaways"]];
+async function nhlTeamStats(id) {
+  try {
+    const rows = {};
+    ((await getJSON(`${NHL}/gamecenter/${id}/right-rail`)).teamGameStats || []).forEach((r) => { rows[r.category] = r; });
+    const out = STAT_ROWS.filter(([k]) => rows[k]).map(([key, label]) => {
+      const a = rows[key].awayValue, h = rows[key].homeValue;
+      if (key === "faceoffWinningPctg") return { key, label, away: `${Math.round(a * 100)}%`, home: `${Math.round(h * 100)}%`, a, h };
+      if (key === "powerPlay") return { key, label, away: a, home: h, a: +String(a).split("/")[0] || 0, h: +String(h).split("/")[0] || 0 };
+      return { key, label, away: String(a), home: String(h), a, h };
+    });
+    return out.length ? out : null;
+  } catch (e) { return null; } // optional extra
+}
+
 // Live clock: `seconds` remaining, true at `as_of`; clients count down while `running` (= Python _live_state).
 function nhlLive(d, asOf) {
   const pd = d.periodDescriptor || {}, clock = d.clock || {};
@@ -420,7 +437,7 @@ async function nhlEvent(g, team) {
   if (status === "live" || (!LITE && status === "final")) {
     try {
       const [d, asOf] = await nhlLanding(g.id);
-      if (!LITE) detail = nhlDetail(d);
+      if (!LITE) detail = Object.assign(nhlDetail(d), { stats: await nhlTeamStats(g.id) });
       if (status === "live") {
         live = nhlLive(d, asOf);
         competitors[0].score = d.awayTeam.score; competitors[1].score = d.homeTeam.score;

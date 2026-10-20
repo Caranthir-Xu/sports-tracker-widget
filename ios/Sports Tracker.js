@@ -127,6 +127,11 @@ const ZH_TOURNAMENTS = [
 const zhTournament = (t) => { const h = ZH_TOURNAMENTS.find(([en]) => (t || "").indexOf(en) >= 0); return h ? h[1] : shortTitle(t); };
 const title = (ev, zh) => (zh ? zhTournament(ev.title) : shortTitle(ev.title));
 const cname = (c, zh) => (zh && c.name_zh ? c.name_zh : c.short || c.name);
+// Narrow matchup columns: a Chinese doubles pair becomes its two surnames ("梁伟铿 / 王昶" → "梁王").
+const pairShort = (name) => {
+  const parts = String(name).split(" / ");
+  return parts.length > 1 && parts.every((p) => /^[\u4e00-\u9fff]{2,}$/.test(p)) ? parts.map((p) => p[0]).join("") : name;
+};
 const round = (ev, zh) => { const r = (ev.subtitle || "").split(" vs ")[0]; return zh ? ZH_ROUNDS[r] || r : r; };
 
 // ---------- images (cached on disk) ----------
@@ -736,6 +741,12 @@ function gameDetailHTML(ev, id) {
   let periods = ["1", "2", "3"].concat(d.goals.some((g) => g.period === "OT") ? ["OT"] : []);
   if (ev.status === "live" && ev.live) periods = periods.slice(0, { "1ST": 1, "2ND": 2, "3RD": 3 }[ev.live.period] || 4);
   let h = `<div class="gd" id="${id}"><div class="gdh">Shots on goal</div><div class="sog"><span><i>${esc(a.short)}</i> ${sog.away}</span><span class="bar"><b style="width:${(100 * (sog.away || 0)) / total}%;background:${tint(a)}"></b><b style="flex:1;background:${tint(b)}"></b></span><span>${sog.home} <i>${esc(b.short)}</i></span></div>`;
+  if (d.stats && d.stats.length) {
+    h += `<div class="gdh">Team stats</div>` + d.stats.map((st) => {
+      const sum = (st.a || 0) + (st.h || 0), share = sum ? (100 * (st.a || 0)) / sum : 50;
+      return `<div class="tst"><span class="v">${esc(st.away)}</span><div class="mid"><div class="lb">${esc(st.label)}</div><span class="bar"><b style="width:${share}%;background:${tint(a)}"></b><b style="flex:1;background:${tint(b)}"></b></span></div><span class="v r">${esc(st.home)}</span></div>`;
+    }).join("");
+  }
   for (const p of periods) {
     const goals = d.goals.filter((g) => g.period === p);
     h += `<div class="gdh">${PERIOD_NAMES[p] || p}${goals.length ? "" : "<em>No scoring</em>"}</div>`;
@@ -863,7 +874,7 @@ function h2hHTML(sport) {
     }
     if (n && n.competitors) {
       const [a, b] = n.competitors;
-      const team = (c) => `<div class="team"><img src="${esc(c.logo || "")}"><b>${esc(cname(c, zh))}</b>${c.record ? `<span>${esc(c.record)}</span>` : ""}${c.form ? `<em>${esc(c.form)}</em>` : ""}</div>`;
+      const team = (c) => `<div class="team"><img src="${esc(c.logo || "")}"><b>${esc(pairShort(cname(c, zh)))}</b>${c.record ? `<span>${esc(c.record)}</span>` : ""}${c.form ? `<em>${esc(c.form)}</em>` : ""}</div>`;
       h += `<div class="matchup ${isHot(n) ? "hot" : ""}">${team(a)}<div class="mid"><b>${esc(isDateOnly(n) ? relDay(n, L) : clock(n.start))}</b><span>${esc((isDateOnly(n) ? "" : relDay(n, L) + " · ") + countdown(n, zh))}</span><em>${esc(title(n, zh))}</em></div>${team(b)}</div>${pathHTML(n.path, zh)}`;
     } else if (n) {
       h += `<div class="lh">${L.next}</div><div class="line ${isHot(n) ? "hot" : ""}">${n.image ? `<img src="${esc(n.image)}">` : ""}<span>${esc(title(n, zh))}</span><em>${esc(relDay(n, L))} · ${esc(countdown(n, zh))}</em></div>${pathHTML(n.path, zh)}`;
@@ -945,6 +956,8 @@ function detailHTML(data, focus) {
   .sbx img{width:26px;height:26px;object-fit:contain}.sbx b{font-size:13px}.sbx strong{font-size:26px;min-width:18px;text-align:center}.sbx .lose{opacity:.42}
   .fin{text-align:center;min-width:64px}.fin span{display:inline-block;padding:1px 7px;border-radius:5px;font-size:10px;font-weight:800;background:rgba(255,255,255,.12)}.fin em{display:block;font-style:normal;font-size:10px;color:rgba(255,255,255,.45);margin-top:2px}.tog{font-size:10px;color:rgba(255,255,255,.4)}
   .gd{display:none;margin-top:7px;padding:10px 11px;border-radius:13px;background:rgba(0,0,0,.26)}.gd.open{display:block}
+  .tst{display:flex;align-items:center;gap:9px;margin:4px 0;font-size:13px;font-weight:700}.tst .v{width:40px}.tst .v.r{text-align:right}.tst .mid{flex:1;min-width:0}.tst .lb{text-align:center;font-size:10px;font-weight:600;color:rgba(255,255,255,.45);margin-bottom:2px}
+  .tst .bar{display:flex;gap:2px;height:5px;border-radius:3px;overflow:hidden}.tst .bar b{display:block;height:100%;border-radius:3px}
   .gdh{display:flex;align-items:center;gap:8px;margin:11px 0 5px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.5)}.gdh:after{content:"";flex:1;height:.5px;background:rgba(255,255,255,.12)}.gdh:first-child{margin-top:0}.gdh em{font-style:normal;font-weight:400;letter-spacing:0;text-transform:none;color:rgba(255,255,255,.32)}
   .sog{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700}.sog i{font-style:normal;color:rgba(255,255,255,.4);font-weight:400}.sog .bar{flex:1;height:7px;display:flex;gap:2px}.sog .bar b{display:block;height:100%;border-radius:4px}
   .goal{display:flex;align-items:flex-start;gap:8px;padding:5px 0}.goal .t{flex:none;width:42px;text-align:center;border-radius:6px;font-size:11px;line-height:17px;background:rgba(255,255,255,.07);color:rgba(255,255,255,.7)}

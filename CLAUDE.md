@@ -150,7 +150,11 @@ Event also has:
   detail = { goals: [ { period ("1"|"2"|"3"|"OT"), time, team, scorer, scorer_total, assists: [..],
               strength ("PP"|"SH"|null), empty_net, score ("away–home") } ],
             shootout: [ { team, player, result ("goal"|"save"|"miss"), winner } ],
-            sog: { away, home }, stars: [ { star, team, name, pos, line } ] }   # NHL finished game only
+            sog: { away, home }, stars: [ { star, team, name, pos, line } ],
+            stats: [ { key, label, away, home, a, h } ] | null }   # NHL finished/live game
+  # stats = team game stats from gamecenter/{id}/right-rail (power play "2/5", PIM, faceoff %, hits,
+  #   blocked shots, giveaways, takeaways); away/home = display strings, a/h = numbers for the bar
+  #   (power play bar compares PP goals). One extra request per game; the live job fetches it uncached.
   # badminton finished match: detail = { duration, venue, games: [ { self, opp, points: [[self, opp]...] } ],
   #   stats: { rallies_won, max_streak, game_points } as [self, opp] }   (points empty if BWF has none)
   # NHL: [away, home], score = goals. Badminton: [self, opponent], games = per-game points, score = games won.
@@ -169,6 +173,9 @@ Event also has:
   day) for the player and returns that match with the exact `matchTimeUtc`, round, opponent and
   court. vue-player-match-next often stays empty until shortly before the match, while the order
   of play comes out the evening before. Day-schedule country codes are IOC (DEN, TPE, MAS).
+  Later rows can say `oopText` "Court and time TBA": their matchTimeUtc is BWF's provisional slot.
+- Narrow matchup columns (desktop `Matchup`, iOS detail `.team`) shorten an all-Chinese doubles pair
+  to its surnames via `pairShort` ("梁伟铿 / 王昶" → "梁王"); boards and lists keep full names.
 
 ## Feature notes
 - F1 track: outline from MultiViewer, rotated by its `rotation`, y flipped, downsampled to
@@ -246,7 +253,7 @@ Event also has:
   nothing crosses the text), team logo + record + streak chip. Live: big score, red dot +
   period/clock (or "INT"), SOG; clicking the live matchup opens `GameDetail` (started periods
   only). Last game = symmetric scoreboard capsule (away · FINAL[/OT/SO] · home, loser dimmed);
-  click toggles `GameDetail`: two-sided SOG bar, goals by period (time chip, scorer (total),
+  click toggles `GameDetail`: two-sided SOG bar, team-stat bars, goals by period (time chip, scorer (total),
   PP/SH/EN tags, assists, running score with the scoring side bold), shootout dots, three
   stars as three cards. Only the NHL uses these (`Subject` gets `sportId`). Clicking the
   "Pacific #5" rank toggles `NHLStandings` (division + wild card tables, followed team

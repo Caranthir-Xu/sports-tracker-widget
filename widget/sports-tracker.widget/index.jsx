@@ -253,6 +253,13 @@ export const className = `
   .goal .tag { font-size: 8px; font-weight: 800; padding: 1px 4px; border-radius: 3px; margin-left: 5px; vertical-align: 1px; background: rgba(255, 179, 64, 0.18); color: #ffb340; }
   .goal .sc { font-size: 12px; line-height: 16px; color: rgba(255, 255, 255, 0.45); }
   .goal .sc b { color: #fff; }
+  .tst { display: flex; align-items: center; gap: 8px; margin: 3px 0; font-size: 11px; font-weight: 700; }
+  .tst .v { width: 34px; }
+  .tst .v:last-child { text-align: right; }
+  .tst .mid { flex: 1; min-width: 0; }
+  .tst .lb { text-align: center; font-size: 9px; font-weight: 600; color: rgba(255, 255, 255, 0.45); margin-bottom: 2px; }
+  .tst .bar { display: flex; gap: 2px; height: 4px; border-radius: 2px; overflow: hidden; }
+  .tst .bar i { display: block; height: 100%; border-radius: 2px; }
   .so { display: flex; align-items: center; gap: 7px; height: 20px; font-size: 11px; font-weight: 700; }
   .so img { width: 16px; height: 16px; object-fit: contain; }
   .so .att { display: flex; gap: 5px; margin-left: 4px; }
@@ -882,6 +889,13 @@ const RinkLines = () => (
   </svg>
 );
 
+// The matchup column is narrow: a Chinese doubles pair becomes its two surnames ("梁伟铿 / 王昶" → "梁王").
+// Only when every part is Chinese; mixed names (e.g. "Chen / Lin") stay as they are.
+function pairShort(name) {
+  const parts = name.split(" / ");
+  return parts.length > 1 && parts.every((p) => /^[\u4e00-\u9fff]{2,}$/.test(p)) ? parts.map((p) => p[0]).join("") : name;
+}
+
 function Matchup({ ev, tz, L, zh, rink }) {
   const [a, b] = ev.competitors;
   const live = ev.status === "live";
@@ -889,7 +903,7 @@ function Matchup({ ev, tz, L, zh, rink }) {
   const Team = ({ c }) => (
     <div className="team">
       <Img src={c.logo} cls={isFlag(c.logo) ? "flag" : ""} />
-      <div className="ab ellipsis">{zh && c.name_zh ? c.name_zh : c.short}</div>
+      <div className="ab ellipsis">{zh && c.name_zh ? pairShort(c.name_zh) : c.short}</div>
       {c.record && <div className="rec">{c.record}</div>}
       {sit && sit.team === c.short ? (
         // Power play / empty net: penalty time counts down with the game clock.
@@ -1006,6 +1020,28 @@ function GameDetail({ ev }) {
         </span>
         <span>{sog.home} <span className="faint">{b.short}</span></span>
       </div>
+      {d.stats && d.stats.length > 0 && (
+        <div>
+          <div className="gd-h">Team stats</div>
+          {d.stats.map((st) => {
+            const sum = (st.a || 0) + (st.h || 0);
+            const share = sum ? (100 * (st.a || 0)) / sum : 50;
+            return (
+              <div className="tst" key={st.key}>
+                <span className="v">{st.away}</span>
+                <div className="mid">
+                  <div className="lb">{st.label}</div>
+                  <span className="bar">
+                    <i style={{ width: `${share}%`, background: tint(a) }} />
+                    <i style={{ flex: 1, background: tint(b) }} />
+                  </span>
+                </div>
+                <span className="v">{st.home}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
       {periods.map((p) => {
         const goals = d.goals.filter((g) => g.period === p);
         return (

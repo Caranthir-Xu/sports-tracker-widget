@@ -66,7 +66,43 @@ def _landing(game_id):
 
 
 def _game_detail(game_id):
-    return _detail_from_landing(_landing(game_id))
+    return dict(_detail_from_landing(_landing(game_id)), stats=_team_stats(game_id))
+
+
+# Team game stats shown as two-sided bars: (category, label). Values come from the right rail.
+STAT_ROWS = [("powerPlay", "Power play"), ("pim", "Penalty min"), ("faceoffWinningPctg", "Faceoffs"),
+             ("hits", "Hits"), ("blockedShots", "Blocked shots"), ("giveaways", "Giveaways"),
+             ("takeaways", "Takeaways")]
+
+
+def _team_stats(game_id, fresh=False):
+    """[{key, label, away, home, a, h}]: display strings + numbers for the bar. Optional extra."""
+    url = f"{API}/gamecenter/{game_id}/right-rail"
+    try:
+        rows = {r["category"]: r for r in (_get_fresh(url) if fresh else get_json(url)).get("teamGameStats") or []}
+    except Exception:
+        return None
+    out = []
+    for key, label in STAT_ROWS:
+        r = rows.get(key)
+        if not r:
+            continue
+        a, h = r["awayValue"], r["homeValue"]
+        if key == "faceoffWinningPctg":
+            out.append({"key": key, "label": label, "away": f"{a * 100:.0f}%", "home": f"{h * 100:.0f}%", "a": a, "h": h})
+        elif key == "powerPlay":  # "goals/opportunities"; the bar compares goals
+            na, nh = (int(str(v).split("/")[0] or 0) for v in (a, h))
+            out.append({"key": key, "label": label, "away": a, "home": h, "a": na, "h": nh})
+        else:
+            out.append({"key": key, "label": label, "away": str(a), "home": str(h), "a": a, "h": h})
+    return out or None
+
+
+def _get_fresh(url):
+    """Uncached GET for the live job (get_json is cached per run)."""
+    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return json.load(r)
 
 
 def _detail_from_landing(d):
@@ -300,7 +336,7 @@ def refresh_live(subj, current):
     for side, c in zip(("away", "home"), ev["competitors"]):
         c["score"] = scores[side]
     ev["live"] = _live_state(d, as_of)
-    ev["detail"] = _detail_from_landing(d)
+    ev["detail"] = dict(_detail_from_landing(d), stats=_team_stats(ev["id"], fresh=True))
     return {"next": ev}
 
 
