@@ -133,7 +133,7 @@ Sport entry may also have (F1 and NHL):
   Table = { title, subtitle, rows: [ { pos, code, name, team, color, value, extra, self } ] }
   # F1 last_race value = winner time / gap / "+N Lap(s)" / "DNF", extra = "+pts"; standings value = points, extra = "NW"
   # NHL tables = { division, wildcard }: rows add logo, gp, cut (last playoff spot: 3rd in division / WC2);
-  #   value = points, extra = "W-L-OT". Built from the same standings/now call (no extra request).
+  #   value = points, extra = "W-L-OT", change = places moved since before our last game (see below).
   # Badminton tables = { <event code e.g. MD/WS>: Table }: BWF world top 10 (one rankingtable call
   #   per followed event); rows add name_zh, logo = flag, team = country, value = points ("95,089"),
   #   extra = weekly rank change (int, + = up), self = followed pair/player.
@@ -164,6 +164,11 @@ Event also has:
 - F1 `next` = next session (FP/Sprint/Quali/Race); `sessions` lists the whole weekend with per-session results.
   F1 `last` = the latest Grand Prix **race** (not sprint, not the latest session).
 - Badminton `next` = next drawn match, else the next World Tour tournament the player is entered in (`subtitle: null`), else null.
+  For an entered tournament (from the day before it starts), `_scheduled_match` / iOS `scheduledMatch`
+  scans its published day schedules (`tournaments/day-matches`, one per day until an unpublished
+  day) for the player and returns that match with the exact `matchTimeUtc`, round, opponent and
+  court. vue-player-match-next often stays empty until shortly before the match, while the order
+  of play comes out the evening before. Day-schedule country codes are IOC (DEN, TPE, MAS).
 
 ## Feature notes
 - F1 track: outline from MultiViewer, rotated by its `rotation`, y flipped, downsampled to
@@ -221,6 +226,11 @@ Event also has:
   ~19 s (`max-age=19`), job every 20 s, widget re-read every 15 s → live data ≲ 40 s behind.
   Was 60 s + 60 s, which looked "stuck" during play. Python's default urllib UA gets 403 from
   the NHL CDN; providers send their own UA.
+- NHL rank change: `ranking.change` and each table row's `change` = position the day before the
+  followed team's last regular-season game (`standings/{date}` = end of that US date, one extra call)
+  minus the position now (+ = up; division rank for the chip/division table, wild-card rank for the
+  wild-card table). Shown as ▲/▼ on the rank chip, a column in the standings tables, and on the iOS
+  widget header (only when non-zero). iOS caches each past day's standings on disk (`nhl_standings_<date>.json`).
 - Post-game standings: the NHL updates standings/now a few minutes after the final horn, so a
   run right after a game can still have the old record. `fetch_subject` sets `ranking.pending`
   when standings GP < regular-season games final in the schedule; while pending (≤ 8 h after

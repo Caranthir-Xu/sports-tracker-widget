@@ -2,7 +2,8 @@
 import copy
 import json
 import urllib.request
-from datetime import timedelta
+from datetime import date, timedelta
+from functools import lru_cache
 
 from .common import UA, get_json, event, result, competitor, now_utc, parse_dt, iso
 
@@ -14,6 +15,32 @@ FINISHED = {"OFF", "FINAL"}
 
 def _standings():
     return get_json(f"{API}/standings/now")["standings"]
+
+
+def _finished_games(team):
+    games = get_json(f"{API}/club-schedule-season/{team}/now")["games"]
+    return sorted((g for g in games if g["gameState"] in FINISHED), key=lambda g: g["startTimeUTC"])
+
+
+@lru_cache(maxsize=None)
+def _before_last_game(team):
+    """{abbrev: (divisionSequence, wildcardSequence)} from the standings at the end of the day
+    before `team`'s last game, so changes show what that game did. None before any games."""
+    done = [g for g in _finished_games(team) if g.get("gameType") == 2 and g.get("gameDate")]
+    if not done:
+        return None
+    day = (date.fromisoformat(done[-1]["gameDate"]) - timedelta(days=1)).isoformat()
+    try:
+        rows = get_json(f"{API}/standings/{day}")["standings"]
+    except Exception:
+        return None  # change is optional
+    return {t["teamAbbrev"]["default"]: (t["divisionSequence"], t.get("wildcardSequence")) for t in rows}
+
+
+def _change(before, abbrev, i, now):
+    """Places moved since before the last game (+ = up); None when unknown."""
+    old = (before or {}).get(abbrev)
+    return old[i] - now if old and old[i] and now else None
 
 
 def _team_row(abbrev):
@@ -165,7 +192,7 @@ def _ranking(team, played=None):
         "points": t["points"],
         "detail": f"{t['wins']}-{t['losses']}-{t['otLosses']}",
         "note": _playoff_note(t),
-        "change": None,
+        "change": _change(_before_last_game(team), team, 0, t["divisionSequence"]),
     }
 
 
@@ -300,8 +327,12 @@ def fetch_sport(sport_cfg):
     div = sorted((t for t in rows if t["divisionName"] == me["divisionName"]), key=lambda t: t["divisionSequence"])
     wc = sorted((t for t in rows if t["conferenceName"] == me["conferenceName"] and t["wildcardSequence"]),
                 key=lambda t: t["wildcardSequence"])
-    division = [dict(_standing_row(t, team, t["divisionSequence"]), cut=t["divisionSequence"] == 3) for t in div]
-    wild = [dict(_standing_row(t, team, t["wildcardSequence"]), cut=t["wildcardSequence"] == 2) for t in wc]
+    before = _before_last_game(team)
+    code = lambda t: t["teamAbbrev"]["default"]
+    division = [dict(_standing_row(t, team, t["divisionSequence"]), cut=t["divisionSequence"] == 3,
+                     change=_change(before, code(t), 0, t["divisionSequence"])) for t in div]
+    wild = [dict(_standing_row(t, team, t["wildcardSequence"]), cut=t["wildcardSequence"] == 2,
+                 change=_change(before, code(t), 1, t["wildcardSequence"])) for t in wc]
     return {"tables": {
         "division": {"title": f"{me['divisionName']} Division", "subtitle": "Top 3 make the playoffs", "rows": division},
         "wildcard": {"title": f"{me['conferenceName']} Wild Card", "subtitle": "Top 2 make the playoffs", "rows": wild},

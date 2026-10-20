@@ -336,7 +336,9 @@ export const className = `
   .nst.bwf .nst-r img.flag { width: 16px; height: 11px; border-radius: 2px; object-fit: cover; }
   .nst.bwf .nst-r .nm { color: rgba(255, 255, 255, 0.8); }
   .nst.bwf .nst-r.me { background: rgba(255, 215, 106, 0.16); box-shadow: inset 2px 0 0 #ffd76a; }
-  .nst.bwf .chgc { width: 22px; text-align: right; font-size: 9px; }
+  .nst .chgc { width: 22px; text-align: right; font-size: 9px; }
+  .nst .chgc .chg { margin-left: 0; font-size: 9px; }
+  .nst .chgc .chg.same { color: rgba(255, 255, 255, 0.25); }
   .nst.bwf .pts { width: 52px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
   .card.badminton .rank.click b { border-bottom-color: rgba(255, 215, 106, 0.6); }
 
@@ -1076,13 +1078,14 @@ function NHLStandings({ tables }) {
   const Table = ({ t }) => (
     <div>
       <div className="nst-h"><b>{t.title}</b><span>{t.subtitle}</span></div>
-      <div className="nst-cols"><span className="p">#</span><span className="ab">TEAM</span><span className="nm" /><span className="gp">GP</span><span className="rec">W-L-OT</span><span className="pt">PTS</span></div>
+      <div className="nst-cols"><span className="p">#</span><span className="ab">TEAM</span><span className="nm" /><span className="chgc" /><span className="gp">GP</span><span className="rec">W-L-OT</span><span className="pt">PTS</span></div>
       {t.rows.map((r) => (
         <div className={`nst-r ${r.self ? "me" : ""} ${r.cut ? "cut" : ""}`} key={r.code}>
           <span className="p">{r.pos}</span>
           <Img src={r.logo} />
           <span className="ab">{r.code}</span>
           <span className="nm">{r.name}</span>
+          <span className="chgc"><Change n={r.change} /></span>
           <span className="gp">{r.gp}</span>
           <span className="rec">{r.extra}</span>
           <span className="pt">{r.value}</span>

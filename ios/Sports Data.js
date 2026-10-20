@@ -290,6 +290,29 @@ const FINISHED = ["OFF", "FINAL"];
 const nhlStandings = async () => (await getJSON(`${NHL}/standings/now`)).standings;
 const nhlTeam = async (abbrev) => (await nhlStandings()).find((t) => t.teamAbbrev.default === abbrev);
 
+// {abbrev: [divisionSequence, wildcardSequence]} at the end of the day before `team`'s last
+// regular-season game (= Python _before_last_game), so changes show what that game did.
+// A past day's standings never change, so they are cached on disk by date.
+async function nhlBeforeLastGame(team) {
+  const games = (await getJSON(`${NHL}/club-schedule-season/${team}/now`)).games;
+  const done = games.filter((g) => FINISHED.includes(g.gameState) && g.gameType === 2 && g.gameDate)
+    .sort((a, b) => a.startTimeUTC.localeCompare(b.startTimeUTC));
+  if (!done.length) return null;
+  const day = iso(Date.parse(done[done.length - 1].gameDate + "T12:00:00Z") - DAY).slice(0, 10);
+  const file = `nhl_standings_${day}.json`;
+  let map = readJSON(file);
+  if (!map) {
+    try {
+      map = {};
+      (await getJSON(`${NHL}/standings/${day}`)).standings.forEach((t) => { map[t.teamAbbrev.default] = [t.divisionSequence, t.wildcardSequence || null]; });
+      writeJSON(file, map);
+    } catch (e) { return null; } // change is optional
+  }
+  return map;
+}
+// Places moved since before the last game (+ = up); null when unknown.
+const nhlChange = (before, abbrev, i, now) => { const o = (before || {})[abbrev]; return o && o[i] && now ? o[i] - now : null; };
+
 async function nhlForm(abbrev) {
   const t = await nhlTeam(abbrev);
   if (!t) return [null, null];
@@ -436,7 +459,8 @@ async function nhlSubject(subj) {
   return {
     ranking: t ? {
       label: t.divisionName, position: t.divisionSequence, points: t.points,
-      detail: `${t.wins}-${t.losses}-${t.otLosses}`, note: await nhlPlayoffNote(t), change: null,
+      detail: `${t.wins}-${t.losses}-${t.otLosses}`, note: await nhlPlayoffNote(t),
+      change: nhlChange(await nhlBeforeLastGame(team).catch(() => null), team, 0, t.divisionSequence),
     } : null,
     next: next ? await nhlEvent(next, team) : null,
     last: done.length ? await nhlEvent(done[done.length - 1], team) : null,
@@ -451,17 +475,18 @@ async function nhlSport(sportCfg) {
   const me = await nhlTeam(team);
   if (!me) return {};
   const rows = await nhlStandings();
-  const row = (t, pos, cut) => ({
+  const before = await nhlBeforeLastGame(team).catch(() => null);
+  const row = (t, pos, cut, i) => ({
     pos, code: t.teamAbbrev.default, name: t.teamCommonName.default,
     logo: (t.teamLogo || "").replace("_light.svg", "_dark.svg") || null, team: null, color: null,
     value: String(t.points), extra: `${t.wins}-${t.losses}-${t.otLosses}`, gp: t.gamesPlayed,
-    self: t.teamAbbrev.default === team, cut,
+    self: t.teamAbbrev.default === team, cut, change: nhlChange(before, t.teamAbbrev.default, i, pos),
   });
   const div = rows.filter((t) => t.divisionName === me.divisionName).sort((a, b) => a.divisionSequence - b.divisionSequence);
   const wc = rows.filter((t) => t.conferenceName === me.conferenceName && t.wildcardSequence).sort((a, b) => a.wildcardSequence - b.wildcardSequence);
   return { tables: {
-    division: { title: `${me.divisionName} Division`, subtitle: "Top 3 make the playoffs", rows: div.map((t) => row(t, t.divisionSequence, t.divisionSequence === 3)) },
-    wildcard: { title: `${me.conferenceName} Wild Card`, subtitle: "Top 2 make the playoffs", rows: wc.map((t) => row(t, t.wildcardSequence, t.wildcardSequence === 2)) },
+    division: { title: `${me.divisionName} Division`, subtitle: "Top 3 make the playoffs", rows: div.map((t) => row(t, t.divisionSequence, t.divisionSequence === 3, 0)) },
+    wildcard: { title: `${me.conferenceName} Wild Card`, subtitle: "Top 2 make the playoffs", rows: wc.map((t) => row(t, t.wildcardSequence, t.wildcardSequence === 2, 1)) },
   } };
 }
 
@@ -665,6 +690,39 @@ async function entered(t, subj) {
     (st.entries || []).some((e) => [(e.player1 || {}).id, (e.player2 || {}).id].includes(subj.player_id)));
 }
 
+// The player's next match from the tournament's published order of play, with its exact time
+// (= Python _scheduled_match): player-match-next often stays empty until the match is close,
+// while day schedules come out the evening before. null until the player's day is published.
+async function scheduledMatch(t, subj) {
+  const start = t.start_date.slice(0, 10), end = t.end_date.slice(0, 10);
+  if (Date.now() < Date.parse(start + "T00:00:00Z") - DAY) return null;
+  const code = ((await bwf("vue-tournament-detail", { tmtId: t.id })).results || {}).code;
+  if (!code) return null;
+  const pid = String(subj.player_id);
+  for (let d = Date.parse(start + "T00:00:00Z"); iso(new Date(d)).slice(0, 10) <= end; d += DAY) {
+    const rows = await bwf("tournaments/day-matches", { tournamentCode: code, date: iso(new Date(d)).slice(0, 10), order: 2, court: 0 });
+    if (!rows || !rows.length) return null; // later days are not published yet
+    for (const r of rows) {
+      const sides = [r.team1 || {}, r.team2 || {}];
+      const ids = sides.map((sd) => (sd.players || []).map((p) => p.id));
+      if (!ids[0].concat(ids[1]).includes(pid) || r.winner || !r.matchTimeUtc) continue;
+      const me = ids[0].includes(pid) ? 0 : 1;
+      const comps = [me, 1 - me].map((i) => { // self first, like matchEvent
+        const [en, zh] = names((sides[i].players || []).map((p) => p.nameDisplay));
+        return competitor({ name: en, short: en, name_zh: zh, logo: sides[i].countryFlagUrl, country: sides[i].countryCode, self: i === me });
+      });
+      return event({
+        title: t.name, subtitle: `${r.roundName} vs ${comps[1].name}`,
+        start: iso(new Date(Date.parse(r.matchTimeUtc.replace(" ", "T") + "Z"))), precision: "exact", status: "scheduled",
+        url: t.url, location: [r.courtName, r.locationName].filter(Boolean).join(", ") || t.location, image: t.flag_url,
+        country: (String(t.flag_url || "").match(/\/([A-Z]{3})\.png/) || [])[1],
+        competitors: comps, path: LITE ? null : await drawPath(t.id, subj.event, subj.player_id),
+      });
+    }
+  }
+  return null;
+}
+
 async function nextTournament(subj, excludeId) {
   const today = iso(now()).slice(0, 10), year = +today.slice(0, 4);
   const tours = (await Promise.all([bwfCalendar(year), bwfCalendar(year + 1).catch(() => [])])).flat()
@@ -673,6 +731,8 @@ async function nextTournament(subj, excludeId) {
   const flags = await Promise.all(tours.map((t) => entered(t, subj).catch(() => false)));
   const t = tours[flags.indexOf(true)];
   if (!t) return null;
+  const scheduled = await scheduledMatch(t, subj).catch(() => null);
+  if (scheduled) return scheduled;
   return event({
     title: t.name, start: t.start_date.slice(0, 10), precision: "date", status: "scheduled",
     url: t.url, location: t.location, image: t.flag_url,

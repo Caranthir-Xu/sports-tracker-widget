@@ -151,7 +151,7 @@ const ISO2 = { USA: "US", CHN: "CN", KOR: "KR", JPN: "JP", INA: "ID", IDN: "ID",
   QAT: "QA", UAE: "AE", ARE: "AE", KSA: "SA", SAU: "SA", BRN: "BH", BHR: "BH", AZE: "AZ", MON: "MC", MCO: "MC",
   AUT: "AT", HUN: "HU", SUI: "CH", CHE: "CH", VIE: "VN", VNM: "VN", PHI: "PH", TUR: "TR", UKR: "UA", BUL: "BG",
   POL: "PL", SWE: "SE", NOR: "NO", FIN: "FI", IRL: "IE", NZL: "NZ", RSA: "ZA", ISR: "IL", POR: "PT", PRT: "PT",
-  CZE: "CZ", MAC: "MO", SCO: "GB", BAH: "BH" };
+  CZE: "CZ", MAC: "MO", SCO: "GB", BAH: "BH", TPE: "TW", TWN: "TW" };
 function flag(code) {
   if (!code) return "";
   if (code === "TPE") return "TPE";
@@ -414,6 +414,7 @@ async function nhlBlock(parent, sport, opts) {
   txt(h, "NHL", 9, C.dim, "bold");
   h.addSpacer();
   if (r) txt(h, `${r.label} #${r.position} · ${r.points} pts`, 9, C.teal, "bold");
+  if (r && r.change) txt(h, r.change > 0 ? `▲${r.change}` : `▼${-r.change}`, 9, new Color(r.change > 0 ? "#30d158" : "#ff6961"), "bold"); // since last game
   if (r && r.note && opts.note) txt(parent, r.note, 9, C.dim);
   parent.addSpacer(3);
   const ev = s.next;
@@ -761,16 +762,19 @@ function liveClockHTML(lv) {
   return `<span data-live-clock data-sec="${lv.seconds}" data-asof="${lv.as_of}" data-running="${run ? 1 : 0}">${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}</span>`;
 }
 
+// Rank change arrow (+ = up). `zero` shows "–" for no change (tables); chips hide it.
+const chgHTML = (n, zero) => (n == null ? "" : n > 0 ? `<i class="up">▲${n}</i>` : n < 0 ? `<i class="down">▼${-n}</i>` : zero ? "–" : "");
+
 function nhlHTML(sport) {
   const s = sport.subjects[0];
   const r = s.ranking, n = s.next, l = s.last;
   let h = `<section class="card nhl" style="background:linear-gradient(160deg,${hex2rgba(s.color || "#006d75", .8)},rgba(12,14,16,.8) 75%)"><h6>NHL</h6>`;
   const tables = sport.tables || {};
-  h += `<div class="subj"><div class="sh"><img src="${esc(s.image || "")}"><b>${esc(s.name)}</b>${r ? `<span class="rank ${tables.division ? "tap" : ""}" ${tables.division ? `onclick="gd('nst')"` : ""}>${esc(r.label)} <b>#${r.position}</b></span>` : ""}</div>${r && r.note ? `<div class="note">${esc(r.note)}</div>` : ""}`;
+  h += `<div class="subj"><div class="sh"><img src="${esc(s.image || "")}"><b>${esc(s.name)}</b>${r ? `<span class="rank ${tables.division ? "tap" : ""}" ${tables.division ? `onclick="gd('nst')"` : ""}>${esc(r.label)} <b>#${r.position}</b>${chgHTML(r.change)}</span>` : ""}</div>${r && r.note ? `<div class="note">${esc(r.note)}</div>` : ""}`;
   // Standings (division + wild card), opened by tapping the rank.
   if (tables.division) {
-    const tbl = (t) => `<div class="nsth"><b>${esc(t.title)}</b><span>${esc(t.subtitle || "")}</span></div><div class="nstc"><span class="p">#</span><span class="ab">TEAM</span><span class="nm"></span><span class="gpn">GP</span><span class="rec">W-L-OT</span><span class="pt">PTS</span></div>`
-      + t.rows.map((x) => `<div class="nstr ${x.self ? "me" : ""} ${x.cut ? "cut" : ""}"><span class="p">${x.pos}</span><img src="${esc(x.logo || "")}"><span class="ab">${esc(x.code)}</span><span class="nm">${esc(x.name)}</span><span class="gpn">${x.gp}</span><span class="rec">${esc(x.extra)}</span><span class="pt">${esc(x.value)}</span></div>`).join("");
+    const tbl = (t) => `<div class="nsth"><b>${esc(t.title)}</b><span>${esc(t.subtitle || "")}</span></div><div class="nstc"><span class="p">#</span><span class="ab">TEAM</span><span class="nm"></span><span class="cg"></span><span class="gpn">GP</span><span class="rec">W-L-OT</span><span class="pt">PTS</span></div>`
+      + t.rows.map((x) => `<div class="nstr ${x.self ? "me" : ""} ${x.cut ? "cut" : ""}"><span class="p">${x.pos}</span><img src="${esc(x.logo || "")}"><span class="ab">${esc(x.code)}</span><span class="nm">${esc(x.name)}</span><span class="cg">${chgHTML(x.change, true)}</span><span class="gpn">${x.gp}</span><span class="rec">${esc(x.extra)}</span><span class="pt">${esc(x.value)}</span></div>`).join("");
     h += `<div class="gd" id="nst">${tbl(tables.division)}${tables.wildcard ? tbl(tables.wildcard) : ""}</div>`;
   }
   if (n && n.competitors) {
@@ -854,9 +858,8 @@ function h2hHTML(sport) {
     h += `<div class="subj"><div class="sh">${flag ? `<img src="${esc(flag)}">` : ""}<b>${esc(s.name)}</b>${r ? `<span class="rank ${top ? "tap" : ""}" ${top ? `onclick="gd('${tid}')"` : ""}>${esc(zh ? ZH_EVENTS[r.label] || r.label : r.label)} <b>#${r.position}</b>${r.change ? `<i class="${r.change > 0 ? "up" : "down"}">${r.change > 0 ? "▲" + r.change : "▼" + -r.change}</i>` : ""}</span>` : ""}</div>`;
     if (r && r.note) h += `<div class="note">${esc(r.note)}</div>`;
     if (top) {
-      const chg = (n) => (n == null ? "" : n > 0 ? `<i class="up">▲${n}</i>` : n < 0 ? `<i class="down">▼${-n}</i>` : "–");
       h += `<div class="gd wrk" id="${tid}"><div class="nsth"><b>${zh ? `世界排名 · ${ZH_EVENTS[r.label] || r.label}` : esc(top.title)}</b><span>${zh ? `前 ${top.rows.length}` : esc(top.subtitle || "")}</span></div>`
-        + top.rows.map((x) => `<div class="nstr ${x.self ? "me" : ""}"><span class="p">${x.pos}</span><img class="fl" src="${esc(x.logo || "")}"><span class="nm">${esc(zh && x.name_zh ? x.name_zh : x.name)}</span><span class="cg">${chg(x.extra)}</span><span class="wp">${esc(x.value)}</span></div>`).join("") + `</div>`;
+        + top.rows.map((x) => `<div class="nstr ${x.self ? "me" : ""}"><span class="p">${x.pos}</span><img class="fl" src="${esc(x.logo || "")}"><span class="nm">${esc(zh && x.name_zh ? x.name_zh : x.name)}</span><span class="cg">${chgHTML(x.extra, true)}</span><span class="wp">${esc(x.value)}</span></div>`).join("") + `</div>`;
     }
     if (n && n.competitors) {
       const [a, b] = n.competitors;
@@ -962,7 +965,7 @@ function detailHTML(data, focus) {
   .stat2 .bar{flex:1;height:6px;display:flex;gap:2px}.stat2 .bar b{display:block;height:100%;border-radius:3px}.nopts{font-size:12px;color:rgba(255,255,255,.4)}
   .rank.tap b{border-bottom:1px dotted rgba(95,211,218,.7)}.card.badminton .rank.tap b{border-bottom-color:rgba(255,215,106,.7)}
   .wrk .nstr img.fl{width:20px;height:14px;border-radius:2px;object-fit:cover}.wrk .nstr .nm{color:rgba(255,255,255,.85)}.wrk .nstr.me{background:rgba(255,215,106,.16);box-shadow:inset 3px 0 0 #ffd76a}
-  .wrk .cg{width:26px;text-align:right;font-size:10px;color:rgba(255,255,255,.4)}.wrk .wp{width:62px;text-align:right;font-weight:700}
+  .cg{width:26px;text-align:right;font-size:10px;color:rgba(255,255,255,.3)}.wrk .wp{width:62px;text-align:right;font-weight:700}
   .nsth{display:flex;justify-content:space-between;align-items:baseline;margin:10px 0 4px}.nsth:first-child{margin-top:0}.nsth b{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.8)}.nsth span{font-size:10px;color:rgba(255,255,255,.4)}
   .nstc{display:flex;gap:7px;padding:0 7px;font-size:9px;font-weight:700;color:rgba(255,255,255,.35)}.nstc .ab{width:54px}
   .nstr{display:flex;align-items:center;gap:7px;height:26px;padding:0 7px;border-radius:7px;font-size:13px}.nstr img{width:20px;height:20px;object-fit:contain}

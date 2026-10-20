@@ -4,6 +4,7 @@ Undocumented and behind Cloudflare: plain urllib gets 403, so requests go
 through curl_cffi impersonating Chrome. No auth token needed.
 """
 import re
+from datetime import date, timedelta
 from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlencode
@@ -291,6 +292,42 @@ def _entered(t, subj):
     return False
 
 
+def _scheduled_match(t, subj):
+    """The player's next match from the tournament's published order of play, with its exact
+    time. The player-match-next endpoint often stays empty until the match is close, while
+    day schedules come out the evening before. None until the player's day is published."""
+    start, end = t["start_date"][:10], t["end_date"][:10]
+    if now_utc().date().isoformat() < (date.fromisoformat(start) - timedelta(days=1)).isoformat():
+        return None
+    code = (get("vue-tournament-detail", tmtId=t["id"]).get("results") or {}).get("code")
+    if not code:
+        return None
+    pid, day = str(subj["player_id"]), date.fromisoformat(start)
+    while day.isoformat() <= end:
+        rows = get("tournaments/day-matches", tournamentCode=code, date=day.isoformat(), order=2, court=0)
+        if not rows:
+            return None  # later days are not published yet
+        for r in rows:
+            sides = [r.get("team1") or {}, r.get("team2") or {}]
+            ids = [{p["id"] for p in sd.get("players") or []} for sd in sides]
+            if pid not in ids[0] | ids[1] or r.get("winner") or not r.get("matchTimeUtc"):
+                continue
+            me = 0 if pid in ids[0] else 1
+            comps = []
+            for i in (me, 1 - me):  # self first, like _match_event
+                en, zh = _names([p["nameDisplay"] for p in sides[i].get("players") or []])
+                comps.append(competitor(name=en, short=en, name_zh=zh, logo=sides[i].get("countryFlagUrl"),
+                                        is_self=i == me))
+            where = ", ".join(x for x in (r.get("courtName"), r.get("locationName")) if x)
+            return event(
+                title=t["name"], subtitle=f"{r['roundName']} vs {comps[1]['name']}",
+                start=iso(parse_dt(r["matchTimeUtc"])), precision="exact", status="scheduled",
+                url=t.get("url"), location=where or t.get("location"), image=t.get("flag_url"),
+                competitors=comps, path=_draw_path(t["id"], subj["event"], subj["player_id"]))
+        day += timedelta(days=1)
+    return None
+
+
 def _next_tournament(subj, exclude_id):
     today = now_utc().date().isoformat()
     year = int(today[:4])
@@ -299,6 +336,9 @@ def _next_tournament(subj, exclude_id):
                    key=lambda t: t["start_date"])
     for t in tours[:MAX_TOURNAMENTS]:
         if _entered(t, subj):
+            scheduled = _scheduled_match(t, subj)
+            if scheduled:
+                return scheduled
             return event(title=t["name"], subtitle=None, start=t["start_date"][:10],
                          precision="date", status="scheduled", url=t.get("url"),
                          location=t.get("location"), image=t.get("flag_url"),
