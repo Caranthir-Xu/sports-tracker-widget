@@ -144,6 +144,10 @@ export const className = `
   .f1t-r .cd { width: 30px; font-size: 12px; }
   .f1t-r .tm { flex: 1; min-width: 0; color: rgba(255, 255, 255, 0.45); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .f1t-r .v { text-align: right; white-space: nowrap; font-family: "SF Mono", Menlo, monospace; font-size: 9.5px; }
+  .f1t-r .cg { width: 22px; text-align: right; }
+  .f1t-r .cg .chg { margin-left: 0; font-size: 8px; font-style: normal; }
+  .f1t-r .cg .chg.same { color: rgba(255, 255, 255, 0.25); }
+  .stat .v .chg { font-size: 9px; font-style: normal; vertical-align: 3px; }
   .f1t-r .x { width: 26px; text-align: right; color: rgba(255, 255, 255, 0.45); font-family: "SF Mono", Menlo, monospace; font-size: 9px; }
 
   /* ---- head-to-head (NHL, badminton) ---- */
@@ -722,7 +726,7 @@ function Driver({ s, tz }) {
       </div>
       <div className="stat click" onClick={(e) => toggleTable(e, "standings")}>
         <div className="k">STANDINGS</div>
-        <div className="v f1x">{r ? `P${r.position}` : "–"}</div>
+        <div className="v f1x">{r ? `P${r.position}` : "–"}{r && r.change ? <Change n={r.change} /> : null}</div>
         <div className="s">{r ? `${Math.round(r.points)} pts` : ""}</div>
       </div>
     </div>
@@ -753,6 +757,7 @@ function F1Table({ kind, table, stale }) {
             <span className="c" style={{ background: r.color || "#888" }} />
             <span className="cd f1x">{r.code}</span>
             <span className="tm">{r.team}</span>
+            {kind === "standings" && <span className="cg"><Change n={r.change} /></span>}
             <span className="v">{r.value}</span>
             <span className="x">{r.extra}</span>
           </div>

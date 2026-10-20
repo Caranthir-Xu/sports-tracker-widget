@@ -131,7 +131,8 @@ Sport entry may also have (F1 and NHL):
   tables = { last_race: Table, standings: Table }, tables_stale (bool; last good copy kept on failure)
   next_round (int, F1 round number of the next race)
   Table = { title, subtitle, rows: [ { pos, code, name, team, color, value, extra, self } ] }
-  # F1 last_race value = winner time / gap / "+N Lap(s)" / "DNF", extra = "+pts"; standings value = points, extra = "NW"
+  # F1 last_race value = winner time / gap / "+N Lap(s)" / "DNF", extra = "+pts"; standings value = points, extra = "NW",
+  #   change = places moved since the previous round (Jolpica current/{round-1}/driverStandings; also ranking.change)
   # NHL tables = { division, wildcard }: rows add logo, gp, cut (last playoff spot: 3rd in division / WC2);
   #   value = points, extra = "W-L-OT", change = places moved since before our last game (see below).
   # Badminton tables = { <event code e.g. MD/WS>: Table }: BWF world top 10 (one rankingtable call
@@ -221,7 +222,8 @@ Event also has:
   live); slanted (skewX −12°) session chips and team-colour number plates; tables styled as a
   timing tower (zebra rows, monospace times, team-colour edge on followed drivers).
 - F1 driver row: car number (on plate), code + team, newest 3 session results of the current
-  weekend (Q/SPR/SQ/FP), then LAST RACE and STANDINGS stat columns. No headshots (data still has `image`).
+  weekend (Q/SPR/SQ/FP), then LAST RACE and STANDINGS stat columns (▲/▼ since the previous round;
+  iOS caches each finished round's standings as `f1_standings_<season>_<round>.json`). No headshots (data still has `image`).
 - Widget layout: `F1Card` (Box Box style: flag, countdown, session strip, driver rows
   in team colour) for sport id `f1`; every other sport uses the generic `H2HCard`
   (Apple Sports style: matchup with logos for `next`, score row or per-game board for `last`).

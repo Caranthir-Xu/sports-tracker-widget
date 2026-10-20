@@ -1,6 +1,7 @@
 """F1: schedule + session results from OpenF1, standings from Jolpica,
 circuit outline from MultiViewer (unofficial, free)."""
 import json
+from functools import lru_cache
 import math
 from datetime import datetime, timezone
 from pathlib import Path
@@ -174,6 +175,26 @@ def _profile(number):
     return {"badge": str(number)}
 
 
+@lru_cache(maxsize=None)
+def _prev_positions():
+    """{driverId: position} after the previous round, for standings change. {} if unknown."""
+    try:
+        lists = get_json(f"{JOLPICA}/current/driverStandings.json")["MRData"]["StandingsTable"]["StandingsLists"]
+        rnd = int(lists[0]["round"]) if lists else 0
+        if rnd < 2:
+            return {}
+        prev = get_json(f"{JOLPICA}/current/{rnd - 1}/driverStandings.json")["MRData"]["StandingsTable"]["StandingsLists"]
+        return {d["Driver"]["driverId"]: int(d["position"]) for d in (prev[0]["DriverStandings"] if prev else [])}
+    except Exception:
+        return {}  # change is optional
+
+
+def _change(driver_id, pos):
+    """Places moved since the previous round (+ = up); None when unknown."""
+    old = _prev_positions().get(driver_id)
+    return old - pos if old else None
+
+
 def _ranking(jolpica_id):
     table = get_json(f"{JOLPICA}/current/driverStandings.json")
     lists = table["MRData"]["StandingsTable"]["StandingsLists"]
@@ -188,7 +209,7 @@ def _ranking(jolpica_id):
                 "points": float(d["points"]),
                 "detail": f"{wins} win{'s' if wins != 1 else ''}",
                 "note": "Championship leader" if d is rows[0] else f"{gap:.0f} pts behind leader",
-                "change": None,
+                "change": _change(jolpica_id, int(d["position"])),
             }
     return None
 
@@ -257,8 +278,9 @@ def fetch_sport(sport_cfg):
                for r in race["Results"]]
 
     lists = get_json(f"{JOLPICA}/current/driverStandings.json")["MRData"]["StandingsTable"]["StandingsLists"]
-    standings = [row(int(d["position"]), d["Driver"], d["Constructors"][-1]["name"],
-                     f"{float(d['points']):g}", f"{d['wins']}W" if int(d["wins"]) else "")
+    standings = [dict(row(int(d["position"]), d["Driver"], d["Constructors"][-1]["name"],
+                          f"{float(d['points']):g}", f"{d['wins']}W" if int(d["wins"]) else ""),
+                      change=_change(d["Driver"]["driverId"], int(d["position"])))
                  for d in (lists[0]["DriverStandings"] if lists else [])]
 
     nxt = get_json(f"{JOLPICA}/current/next.json")["MRData"]["RaceTable"]["Races"]

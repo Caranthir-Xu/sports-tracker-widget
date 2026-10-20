@@ -134,6 +134,27 @@ async function f1Profile(number) {
   return { team: d.team_name, color: d.team_colour ? `#${d.team_colour}` : null, image: d.headshot_url, badge: String(number) };
 }
 
+// {driverId: position} after the previous round (= Python _prev_positions), cached on disk:
+// a finished round's standings never change. {} when unknown.
+async function f1PrevPositions() {
+  try {
+    const lists = (await getJSON(`${JOLPICA}/current/driverStandings.json`)).MRData.StandingsTable.StandingsLists;
+    const rnd = lists.length ? +lists[0].round : 0;
+    if (rnd < 2) return {};
+    const file = `f1_standings_${lists[0].season}_${rnd - 1}.json`;
+    let map = readJSON(file);
+    if (!map) {
+      const prev = (await getJSON(`${JOLPICA}/current/${rnd - 1}/driverStandings.json`)).MRData.StandingsTable.StandingsLists;
+      map = {};
+      (prev.length ? prev[0].DriverStandings : []).forEach((d) => { map[d.Driver.driverId] = +d.position; });
+      writeJSON(file, map);
+    }
+    return map;
+  } catch (e) { return {}; } // change is optional
+}
+// Places moved since the previous round (+ = up); null when unknown.
+const f1Change = (prev, id, pos) => (prev[id] ? prev[id] - pos : null);
+
 async function f1Ranking(jolpicaId) {
   const t = await getJSON(`${JOLPICA}/current/driverStandings.json`);
   const lists = t.MRData.StandingsTable.StandingsLists;
@@ -145,7 +166,8 @@ async function f1Ranking(jolpicaId) {
   return {
     label: "Drivers", position: +d.position, points: +d.points,
     detail: `${wins} win${wins !== 1 ? "s" : ""}`,
-    note: d === rows[0] ? "Championship leader" : `${Math.round(gap)} pts behind leader`, change: null,
+    note: d === rows[0] ? "Championship leader" : `${Math.round(gap)} pts behind leader`,
+    change: f1Change(await f1PrevPositions(), jolpicaId, +d.position),
   };
 }
 
@@ -249,6 +271,7 @@ async function f1Sport(sportCfg) {
     getJSON(`${OPENF1}/drivers?session_key=latest`), getJSON(`${JOLPICA}/current/last/results.json`),
     getJSON(`${JOLPICA}/current/driverStandings.json`), getJSON(`${JOLPICA}/current/next.json`),
   ]);
+  const prev = await f1PrevPositions();
   const colours = {};
   drivers.forEach((d) => { if (d.team_colour) colours[d.name_acronym] = `#${d.team_colour}`; });
   const row = (pos, d, team, value, extra) => ({
@@ -272,8 +295,9 @@ async function f1Sport(sportCfg) {
       last_race: { title: race.raceName, subtitle: `Round ${race.round} · ${race.date}`,
         rows: race.Results.map((r) => row(+r.position, r.Driver, r.Constructor.name, gap(r), +r.points ? `+${r.points}` : "")) },
       standings: { title: "Driver standings", subtitle: lists.length ? `After round ${lists[0].round}` : null,
-        rows: (lists.length ? lists[0].DriverStandings : []).map((d) =>
-          row(+d.position, d.Driver, d.Constructors[d.Constructors.length - 1].name, String(+d.points), +d.wins ? `${d.wins}W` : "")) },
+        rows: (lists.length ? lists[0].DriverStandings : []).map((d) => Object.assign(
+          row(+d.position, d.Driver, d.Constructors[d.Constructors.length - 1].name, String(+d.points), +d.wins ? `${d.wins}W` : ""),
+          { change: f1Change(prev, d.Driver.driverId, +d.position) })) },
     },
   };
 }

@@ -380,6 +380,8 @@ async function f1Block(parent, sport, opts) {
     txt(r, last ? shortTitle(last.title).replace(" GP", "") : "", 9, C.dim);
     txt(r, "·", 9, C.faint);
     txt(r, s.ranking ? `P${s.ranking.position}` : "–", opts.compact ? 14 : 15, C.text, "race");
+    const ch = s.ranking && s.ranking.change;
+    if (ch) txt(r, ch > 0 ? `▲${ch}` : `▼${-ch}`, 8, new Color(ch > 0 ? "#30d158" : "#ff6961"), "bold"); // since last round
     txt(r, s.ranking ? `${Math.round(s.ranking.points)} PTS` : "", 9, C.dim);
     if (!opts.compact) parent.addSpacer(2);
   }
@@ -699,14 +701,14 @@ function f1HTML(sport) {
       <div class="plate" style="background:${s.color || "#888"}"><span class="f1x">${esc(s.badge)}</span></div>
       <div class="who"><b class="f1x">${esc(s.short)}</b><div class="dim">${esc(s.team || "")}</div></div>
       <div class="stat tap" onclick="tbl('last_race')"><i>LAST RACE</i><b class="f1x">${esc(l && l.result ? l.result.summary : "–")}</b><span>${esc(l ? shortTitle(l.title).replace(" GP", "") : "")}</span></div>
-      <div class="stat tap" onclick="tbl('standings')"><i>STANDINGS</i><b class="f1x">${r ? "P" + r.position : "–"}</b><span>${r ? Math.round(r.points) + " pts" : ""}</span></div></div>`;
+      <div class="stat tap" onclick="tbl('standings')"><i>STANDINGS</i><b class="f1x">${r ? "P" + r.position : "–"}${r ? chgHTML(r.change) : ""}</b><span>${r ? Math.round(r.points) + " pts" : ""}</span></div></div>`;
   }
   // Timing-tower tables, toggled by the stats above.
   for (const kind of ["last_race", "standings"]) {
     const t = (sport.tables || {})[kind];
     if (!t) continue;
     h += `<div class="f1t" id="t_${kind}"><div class="f1t-h"><b class="f1x">${esc(shortTitle(t.title).toUpperCase())}</b><span>${esc(t.subtitle || "")}${sport.tables_stale ? " · ⚠ stale" : ""}</span></div>
-      ${t.rows.map((r) => `<div class="f1t-r ${r.self ? "me" : ""}" ${r.self ? `style="box-shadow:inset 3px 0 0 ${r.color || "#fff"}"` : ""}><span class="p f1x">${r.pos}</span><span class="c" style="background:${r.color || "#888"}"></span><span class="cd f1x">${esc(r.code)}</span><span class="tm">${esc(r.team)}</span><span class="v">${esc(r.value)}</span><span class="x">${esc(r.extra)}</span></div>`).join("")}</div>`;
+      ${t.rows.map((r) => `<div class="f1t-r ${r.self ? "me" : ""}" ${r.self ? `style="box-shadow:inset 3px 0 0 ${r.color || "#fff"}"` : ""}><span class="p f1x">${r.pos}</span><span class="c" style="background:${r.color || "#888"}"></span><span class="cd f1x">${esc(r.code)}</span><span class="tm">${esc(r.team)}</span>${kind === "standings" ? `<span class="cg">${chgHTML(r.change, true)}</span>` : ""}<span class="v">${esc(r.value)}</span><span class="x">${esc(r.extra)}</span></div>`).join("")}</div>`;
   }
   return h + "</section>";
 }
@@ -927,6 +929,7 @@ function detailHTML(data, focus) {
   .plate{width:40px;height:32px;display:flex;align-items:center;justify-content:center;transform:skewX(-12deg);border-radius:3px;box-shadow:inset 0 -3px 0 rgba(0,0,0,.25)}.plate span{transform:skewX(12deg);font-size:22px}
   .who{flex:1}.driver .who b{font-size:21px}.stat{width:68px;text-align:right}.stat i{display:block;font-size:8px;font-style:normal;color:rgba(255,255,255,.45)}.stat b{font-size:24px}.stat span{display:block;font-size:10px;color:rgba(255,255,255,.5)}
   .stat.tap i{border-bottom:1px dotted rgba(255,255,255,.4);display:inline-block}
+  .f1t-r .cg{width:24px;font-size:9px}.stat b .up,.stat b .down{font-family:-apple-system,sans-serif;font-size:10px;font-style:normal;vertical-align:4px;margin-left:2px}
   .f1t{display:none;margin-top:8px;border-radius:10px;overflow:hidden;background:rgba(0,0,0,.42)}.f1t.open{display:block}
   .f1t-h{display:flex;justify-content:space-between;align-items:baseline;padding:7px 10px 6px 16px;position:relative;background:rgba(255,255,255,.06)}
   .f1t-h::before{content:"";position:absolute;left:0;top:0;bottom:0;width:7px;background:repeating-conic-gradient(#fff 0 25%,#111 0 50%) 0 0/7px 7px;opacity:.6}
