@@ -208,6 +208,9 @@ Event also has:
 - `get_json` / BWF `_get` are `lru_cache`d, so shared calls (standings, calendar) run once per run.
 - `data.json` is written via temp file + rename; readers never see partial JSON.
 - A full run takes ~15 s (BWF is the slow part).
+- Full runs first wait up to 120 s for DNS (`wait_for_network`): a run right after the Mac wakes
+  used to start before the network was back, fail every source ("8 failed") and leave everything
+  stale for 30 min. If still offline it fetches anyway (stale fallback). The live job does not wait.
 - A scheduled event whose start time has passed but is not live yet (NHL "PRE", delays) shows
   "Starting soon" / "即将开始", not "started". The live job ignores PRE and updates once LIVE.
 - Widget: refreshes every 15 s (just `cat`; keeps live scores fresh), highlights events that are live or

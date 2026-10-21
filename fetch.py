@@ -11,7 +11,9 @@ when nothing is on.
 import importlib
 import json
 import os
+import socket
 import sys
+import time
 import traceback
 from pathlib import Path
 
@@ -68,7 +70,30 @@ def summarize(subj):
     return f"{subj['name']}{flag}\n    rank: {rank}\n    next: {nxt}\n    last: {lst}"
 
 
+# A run right after the Mac wakes can start before Wi-Fi/DNS is back; every source then
+# fails and all subjects go stale until the next run 30 min later. Wait for DNS first.
+NET_HOSTS = ("api-web.nhle.com", "api.jolpi.ca", "extranet-lv.bwfbadminton.com")
+NET_WAIT_S = 120
+
+
+def wait_for_network(timeout=NET_WAIT_S, step=5):
+    """True once any data host resolves (within `timeout` s); False -> run anyway (stale fallback)."""
+    deadline = time.monotonic() + timeout
+    while True:
+        for host in NET_HOSTS:
+            try:
+                socket.getaddrinfo(host, 443)
+                return True
+            except OSError:
+                pass
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(step)
+
+
 def main():
+    if not wait_for_network():
+        print(f"{iso(now_utc())} network not reachable after {NET_WAIT_S} s, fetching anyway", file=sys.stderr)
     config = yaml.safe_load((ROOT / "config.yaml").read_text())
     out_path = ROOT / config.get("output", "data.json")
     previous, previous_sports = load_previous(out_path)
