@@ -183,8 +183,17 @@ Event also has:
   downloads every flag URL in its entry once with curl_cffi into `cache/flags/` and fetch.py writes
   them as top-level `assets` (~190 KB). The widget's `Img` uses `ASSETS[src] || src`. iOS loads
   flags itself (Apple's stack isn't blocked) and ignores `assets`.
-- Narrow matchup columns (desktop `Matchup`, iOS detail `.team`) shorten an all-Chinese doubles pair
-  to its surnames via `pairShort` ("梁伟铿 / 王昶" → "梁王"); boards and lists keep full names.
+- Badminton live (desktop): `tournaments/day-matches` rows carry `matchStatus` (N scheduled, P in
+  progress, O off court, F finished), `score` [{set, home, away, serve}] (home = team1) and elapsed
+  `time`; CDN max-age 10 s. Badminton next events get `id` = "<tournament code>|<date>|<match id>";
+  `refresh_live` polls that row from −15 min to +4 h around the (often provisional) start: P → status
+  live + `live` { period "G2", games [[self, opp]...] incl. the current game, serve "self"/"opp",
+  court, elapsed } and competitor games/score (games won); a row with a winner → full
+  `fetch_subject()`. `carry_live` keeps live status/scores across full runs (BWF's player API never
+  says "in progress"). Desktop Matchup: current game big, "第N局 · elapsed · court", finished games
+  + games won, gold dot by the server. iOS does not show badminton live (widgets show no live scores).
+- Narrow matchup columns (desktop `Matchup`, iOS detail `.team`) shorten a doubles pair of 2–3-character
+  CJK names to its surnames via `pairShort` (4-character Japanese names stay whole) ("梁伟铿 / 王昶" → "梁王"); boards and lists keep full names.
 
 ## Feature notes
 - F1 track: outline from MultiViewer, rotated by its `rotation`, y flipped, downsampled to

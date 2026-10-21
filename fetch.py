@@ -47,9 +47,12 @@ def carry_live(subj, old):
     """The full run doesn't fetch live state; keep the live job's last values for the same
     in-progress event so the widget's live clock doesn't blank out until the next live poll."""
     new_ev, old_ev = subj.get("next") or {}, old.get("next") or {}
-    if (new_ev.get("status") == "live" and not new_ev.get("live") and old_ev.get("live")
+    if (new_ev.get("status") in ("live", "scheduled") and not new_ev.get("live") and old_ev.get("live")
             and new_ev.get("id") is not None and new_ev.get("id") == old_ev.get("id")):
-        new_ev["live"] = old_ev["live"]
+        # BWF's player endpoint doesn't report "in progress": keep the live job's status + scores too.
+        new_ev.update(status="live", live=old_ev["live"])
+        for c_new, c_old in zip(new_ev.get("competitors") or [], old_ev.get("competitors") or []):
+            c_new["score"], c_new["games"] = c_old.get("score"), c_old.get("games")
 
 
 def write_atomic(path, data):

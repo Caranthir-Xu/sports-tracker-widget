@@ -215,6 +215,7 @@ export const className = `
   .matchup.rink .mid .big { font-size: 22px; font-weight: 600; }
   .matchup.live { cursor: pointer; }
   .live-score { font-size: 28px; font-weight: 700; letter-spacing: 0.02em; }
+  .srv { display: inline-block; width: 6px; height: 6px; margin-left: 5px; border-radius: 50%; background: #ffd76a; vertical-align: 2px; box-shadow: 0 0 5px #ffd76a; }
   .live-score i { font-style: normal; color: rgba(255, 255, 255, 0.35); margin: 0 6px; }
   .live-state { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 700; color: #ff6961; }
   .live-state .dot { width: 6px; height: 6px; border-radius: 50%; background: #ff453a; box-shadow: 0 0 0 3px rgba(255, 69, 58, 0.25); }
@@ -909,7 +910,7 @@ const RinkLines = () => (
 // Only when every part is Chinese; mixed names (e.g. "Chen / Lin") stay as they are.
 function pairShort(name) {
   const parts = name.split(" / ");
-  return parts.length > 1 && parts.every((p) => /^[\u4e00-\u9fff]{2,}$/.test(p)) ? parts.map((p) => p[0]).join("") : name;
+  return parts.length > 1 && parts.every((p) => /^[\u4e00-\u9fff]{2,3}$/.test(p)) ? parts.map((p) => p[0]).join("") : name;
 }
 
 function Matchup({ ev, tz, L, zh, rink }) {
@@ -919,7 +920,8 @@ function Matchup({ ev, tz, L, zh, rink }) {
   const Team = ({ c }) => (
     <div className="team">
       <Img src={c.logo} cls={isFlag(c.logo) ? "flag" : ""} />
-      <div className="ab ellipsis">{zh && c.name_zh ? pairShort(c.name_zh) : c.short}</div>
+      <div className="ab ellipsis">{zh && c.name_zh ? pairShort(c.name_zh) : c.short}
+        {live && lv && lv.serve && lv.serve === (c.self ? "self" : "opp") ? <span className="srv" /> : null}</div>
       {c.record && <div className="rec">{c.record}</div>}
       {sit && sit.team === c.short ? (
         // Power play / empty net: penalty time counts down with the game clock.
@@ -938,7 +940,19 @@ function Matchup({ ev, tz, L, zh, rink }) {
          onClick={live && ev.detail ? toggleDetail : null}>
       {rink && <RinkLines />}
       <Team c={a} />
-      {live ? (
+      {live && lv && lv.games ? (
+        // Badminton: current game big, finished games below; competitors are [self, opponent].
+        <div className="mid">
+          <div className="live-score">{lv.games[lv.games.length - 1][0]}<i>:</i>{lv.games[lv.games.length - 1][1]}</div>
+          <div className="live-state">
+            <span className="dot" />
+            <span>{zh ? `第${lv.games.length}局` : lv.period}{lv.elapsed ? ` · ${lv.elapsed}` : ""}{lv.court ? ` · ${lv.court}` : ""}</span>
+          </div>
+          {lv.games.length > 1 && (
+            <div className="live-sog">{lv.games.slice(0, -1).map((g) => `${g[0]}-${g[1]}`).join("  ")} · {a.score || 0}:{b.score || 0}</div>
+          )}
+        </div>
+      ) : live ? (
         <div className="mid">
           <div className="live-score">{a.score || 0}<i>:</i>{b.score || 0}</div>
           <div className="live-state">

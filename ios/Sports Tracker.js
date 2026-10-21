@@ -130,7 +130,7 @@ const cname = (c, zh) => (zh && c.name_zh ? c.name_zh : c.short || c.name);
 // Narrow matchup columns: a Chinese doubles pair becomes its two surnames ("梁伟铿 / 王昶" → "梁王").
 const pairShort = (name) => {
   const parts = String(name).split(" / ");
-  return parts.length > 1 && parts.every((p) => /^[\u4e00-\u9fff]{2,}$/.test(p)) ? parts.map((p) => p[0]).join("") : name;
+  return parts.length > 1 && parts.every((p) => /^[\u4e00-\u9fff]{2,3}$/.test(p)) ? parts.map((p) => p[0]).join("") : name;
 };
 const round = (ev, zh) => { const r = (ev.subtitle || "").split(" vs ")[0]; return zh ? ZH_ROUNDS[r] || r : r; };
 

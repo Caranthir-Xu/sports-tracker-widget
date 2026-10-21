@@ -6,6 +6,7 @@ through curl_cffi impersonating Chrome. No auth token needed.
 import base64
 import hashlib
 import re
+import copy
 from datetime import date, timedelta
 from functools import lru_cache
 from pathlib import Path
@@ -164,7 +165,11 @@ def _match_event(m, pid):
             summary = f"{summary} ({m['status_name']})".strip()
         res = result(summary, "win" if m["winner"] == side else "loss")
 
-    exact = _exact_time(m)
+    try:
+        row = _day_row(m)
+    except Exception:
+        row = None  # exact time is optional
+    exact = iso(parse_dt(row["matchTimeUtc"])) if row and row.get("matchTimeUtc") else None
     detail = None
     if final:
         try:
@@ -183,7 +188,13 @@ def _match_event(m, pid):
         competitors=[_side(m, side, side, final), _side(m, opp, side, final)],  # self first
         path=path,
         detail=detail,
+        id=_live_id(row) if row and not final else None,
     )
+
+
+def _live_id(row):
+    """'<tournament code>|<YYYY-MM-DD>|<match id>': where refresh_live finds the match's row."""
+    return f"{row['tournamentCode']}|{row['matchTime'][:10]}|{row['id']}"
 
 
 def _draw_team(t):
@@ -325,7 +336,8 @@ def _scheduled_match(t, subj):
                 title=t["name"], subtitle=f"{r['roundName']} vs {comps[1]['name']}",
                 start=iso(parse_dt(r["matchTimeUtc"])), precision="exact", status="scheduled",
                 url=t.get("url"), location=where or t.get("location"), image=t.get("flag_url"),
-                competitors=comps, path=_draw_path(t["id"], subj["event"], subj["player_id"]))
+                competitors=comps, path=_draw_path(t["id"], subj["event"], subj["player_id"]),
+                id=_live_id(dict(r, tournamentCode=r.get("tournamentCode") or code)))
         day += timedelta(days=1)
     return None
 
@@ -462,3 +474,57 @@ def assets(sport_entry):
         except Exception:
             pass
     return out
+
+
+# ---------- live mode (fetch.py --live, every 20 s) ----------
+
+LIVE_BEFORE = timedelta(minutes=15)  # BWF start times are often provisional ("time TBA")
+LIVE_AFTER = timedelta(hours=4)
+
+
+def _live_row(live_id):
+    code, day, mid = live_id.split("|")
+    r = requests.get(API + "tournaments/day-matches?" + urlencode(
+        {"tournamentCode": code, "date": day, "order": 2, "court": 0}), impersonate="chrome", timeout=20)
+    r.raise_for_status()  # CDN max-age=10, so a 20 s poll is always fresh enough
+    return next((x for x in r.json() if str(x["id"]) == mid), None)
+
+
+def refresh_live(subj, current):
+    """Live score of the subject's next match from the day schedule (matchStatus P = in progress).
+    None when nothing to do; a full fetch_subject() once the match has a winner."""
+    ev = (current or {}).get("next")
+    if not ev or not ev.get("id") or "|" not in str(ev["id"]) or ev.get("time_precision") != "exact":
+        return None
+    start, now = parse_dt(ev["start"]), now_utc()
+    if ev.get("status") != "live" and not (start - LIVE_BEFORE <= now <= start + LIVE_AFTER):
+        return None
+    row = _live_row(ev["id"])
+    if not row:
+        return None
+    if row.get("winner"):
+        return fetch_subject(subj)  # finished: last/next roll over
+    ev = copy.deepcopy(ev)
+    if row.get("matchTimeUtc"):
+        ev["start"] = iso(parse_dt(row["matchTimeUtc"]))  # provisional slots move
+    if row.get("matchStatus") != "P":
+        return {"next": ev} if ev["start"] != current["next"]["start"] else None
+    pid = str(subj["player_id"])
+    home_is_self = pid in {p["id"] for p in (row.get("team1") or {}).get("players") or []}
+    sets = sorted(row.get("score") or [], key=lambda x: x["set"])
+    games = [[x["home"], x["away"]] if home_is_self else [x["away"], x["home"]] for x in sets]
+    done = games[:-1]  # the last set listed is the one being played
+    for i, c in enumerate(ev.get("competitors") or []):  # [self, opponent]
+        c["games"] = [g[i] for g in games]
+        c["score"] = sum(1 for g in done if g[i] > g[1 - i])
+    serve = sets[-1].get("serve") if sets else None
+    ev["status"] = "live"
+    ev["live"] = {
+        "period": f"G{len(sets)}" if sets else None,
+        "games": games,
+        "serve": None if not serve else ("self" if (serve == 1) == home_is_self else "opp"),
+        "court": row.get("courtName"),
+        "elapsed": row.get("time"),
+        "updated_at": iso(now),
+    }
+    return {"next": ev}
