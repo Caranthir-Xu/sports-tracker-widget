@@ -636,7 +636,9 @@ function rgba(hex, a) {
 const SESSION_ABBR = { "Sprint Quali": "SQ", Sprint: "SPR", Qualifying: "QUALI", Race: "RACE" };
 const WEEKEND_ABBR = { "Sprint Quali": "SQ", Sprint: "SPR", Qualifying: "Q", Race: "R" };
 const hideBroken = (e) => { e.target.style.visibility = "hidden"; };
-const Img = ({ src, cls }) => (src ? <img src={src} className={cls || ""} onError={hideBroken} /> : null);
+// data.json "assets": inline copies of BWF flags (some remote ones get blocked at random).
+let ASSETS = {};
+const Img = ({ src, cls }) => (src ? <img src={ASSETS[src] || src} className={cls || ""} onError={hideBroken} /> : null);
 
 const Badge = ({ ev, tz, L }) =>
   ev && ev.status === "live" ? <span className="pill live">{L.live}</span>
@@ -1461,6 +1463,7 @@ export const render = ({ output, error }) => {
   let data;
   try {
     data = JSON.parse(output);
+    ASSETS = data.assets || {};
   } catch (e) {
     return <div className="card err">No data yet{error ? ` (${error})` : ""}</div>;
   }

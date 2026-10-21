@@ -108,6 +108,7 @@ BWF endpoints in use:
 ## data.json (schema_version 1)
 ```
 { schema_version, generated_at (UTC), timezone ("America/Detroit"),
+  assets: { <image URL>: "data:...;base64,..." },   # inline BWF flags; clients use them first
   sports: [ { id, name,
     subjects: [ { id, name, short, updated_at, stale, error,
       team, color ("#RRGGBB"), image (headshot/logo/flag URL), badge (e.g. car number),
@@ -177,6 +178,11 @@ Event also has:
   BWF's flag CDN (`flag-circle-svg-custom/<code>.png`) is keyed by IOC code, but player models give
   ISO3 for some countries (TWN, IDN...): iOS `FLAG_PNG` maps them via `IOC` (TWN.png is a 404).
   Later rows can say `oopText` "Court and time TBA": their matchTimeUtc is BWF's provisional slot.
+- BWF flags on the desktop: Übersicht's WebKit had random flags blocked (BWF Cloudflare) although
+  the URLs are fine. Providers may expose `assets(sport_entry) -> {url: data URI}`; badminton
+  downloads every flag URL in its entry once with curl_cffi into `cache/flags/` and fetch.py writes
+  them as top-level `assets` (~190 KB). The widget's `Img` uses `ASSETS[src] || src`. iOS loads
+  flags itself (Apple's stack isn't blocked) and ignores `assets`.
 - Narrow matchup columns (desktop `Matchup`, iOS detail `.team`) shorten an all-Chinese doubles pair
   to its surnames via `pairShort` ("梁伟铿 / 王昶" → "梁王"); boards and lists keep full names.
 

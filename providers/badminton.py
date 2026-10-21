@@ -3,6 +3,8 @@
 Undocumented and behind Cloudflare: plain urllib gets 403, so requests go
 through curl_cffi impersonating Chrome. No auth token needed.
 """
+import base64
+import hashlib
 import re
 from datetime import date, timedelta
 from functools import lru_cache
@@ -417,3 +419,46 @@ def fetch_sport(sport_cfg):
         if ev not in tables:
             tables[ev] = _top_table(ev, mine)
     return {"tables": tables}
+
+
+# ---------- inline flags (fetch.py merges these into data.json "assets") ----------
+
+FLAG_PREFIXES = (FLAGS, "https://img.bwfbadminton.com/image/upload/v2/assets/flag-circle-svg-custom/")
+FLAG_CACHE = Path(__file__).resolve().parent.parent / "cache" / "flags"
+
+
+def _urls(obj):
+    if isinstance(obj, dict):
+        for v in obj.values():
+            yield from _urls(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from _urls(v)
+    elif isinstance(obj, str) and obj.startswith(FLAG_PREFIXES):
+        yield obj
+
+
+def _flag_data_uri(url):
+    """data: URI for one flag; downloaded once (curl_cffi, like the API) and cached on disk."""
+    FLAG_CACHE.mkdir(parents=True, exist_ok=True)
+    ext = url.rsplit(".", 1)[-1].lower()
+    path = FLAG_CACHE / (hashlib.sha1(url.encode()).hexdigest()[:16] + "." + ext)
+    if not path.exists():
+        r = requests.get(url, impersonate="chrome", timeout=20)
+        r.raise_for_status()
+        path.write_bytes(r.content)
+    mime = "image/svg+xml" if ext == "svg" else "image/png"
+    return f"data:{mime};base64,{base64.b64encode(path.read_bytes()).decode()}"
+
+
+def assets(sport_entry):
+    """{flag URL: data URI} for every BWF flag in the sport entry. Übersicht's WebKit sometimes
+    gets some of these images blocked by BWF's Cloudflare (random flags missing); inline copies
+    always render. A flag that fails to download is skipped (the widget falls back to the URL)."""
+    out = {}
+    for url in set(_urls(sport_entry)):
+        try:
+            out[url] = _flag_data_uri(url)
+        except Exception:
+            pass
+    return out

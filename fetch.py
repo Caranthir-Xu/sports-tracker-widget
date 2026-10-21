@@ -99,7 +99,7 @@ def main():
     previous, previous_sports = load_previous(out_path)
     failures = 0
 
-    sports = []
+    sports, assets = [], {}
     for sport in config["sports"]:
         subjects = []
         for cfg in sport["subjects"]:
@@ -139,12 +139,19 @@ def main():
             if old.get("tables"):
                 entry.update(tables=old["tables"], tables_stale=True, next_round=old.get("next_round"))
         sports.append(entry)
+        # Optional inline copies of images the widget can't load reliably (BWF flags).
+        try:
+            if hasattr(provider, "assets"):
+                assets.update(provider.assets(entry))
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
 
     data = {
         "schema_version": SCHEMA_VERSION,
         "generated_at": iso(now_utc()),
         "timezone": config.get("timezone", "UTC"),
         "sports": sports,
+        "assets": assets,  # {image URL: data: URI}; clients prefer these over the URL
     }
     write_atomic(out_path, data)
     for extra in config.get("extra_outputs") or []:
