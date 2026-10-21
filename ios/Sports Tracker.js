@@ -864,7 +864,7 @@ function h2hHTML(sport) {
   let h = `<section class="card ${sport.id}" style="${bg}"><h6>${sport.id === "badminton" ? SHUTTLE_SVG : ""}${esc(sport.name)}</h6>`;
   for (const s of sport.subjects) {
     const r = s.ranking, n = s.next, l = s.last;
-    const flag = s.country ? `https://img.bwfbadminton.com/image/upload/v2/assets/flag-circle-svg-custom/${s.country}.png` : s.image;
+    const flag = s.image; // FLAG_PNG in Sports Data.js (IOC-mapped)
     // Badminton: tapping the rank opens the world top 10 for that event (sport tables).
     const top = r && sport.tables ? sport.tables[r.label] : null;
     const tid = `wr_${esc(s.id)}`;

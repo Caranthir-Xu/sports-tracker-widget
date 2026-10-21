@@ -174,6 +174,8 @@ Event also has:
   day) for the player and returns that match with the exact `matchTimeUtc`, round, opponent and
   court. vue-player-match-next often stays empty until shortly before the match, while the order
   of play comes out the evening before. Day-schedule country codes are IOC (DEN, TPE, MAS).
+  BWF's flag CDN (`flag-circle-svg-custom/<code>.png`) is keyed by IOC code, but player models give
+  ISO3 for some countries (TWN, IDN...): iOS `FLAG_PNG` maps them via `IOC` (TWN.png is a 404).
   Later rows can say `oopText` "Court and time TBA": their matchTimeUtc is BWF's provisional slot.
 - Narrow matchup columns (desktop `Matchup`, iOS detail `.team`) shorten an all-Chinese doubles pair
   to its surnames via `pairShort` ("梁伟铿 / 王昶" → "梁王"); boards and lists keep full names.

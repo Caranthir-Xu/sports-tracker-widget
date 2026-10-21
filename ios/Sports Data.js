@@ -539,7 +539,11 @@ const BWF = "https://extranet-lv.bwfbadminton.com/api/";
 const RANK_CAT = { MS: 6, WS: 7, MD: 8, WD: 9, XD: 10 };
 const ENTRY_EVENT = { MS: 1, WS: 2, MD: 3, WD: 4, XD: 5 };
 const WORLD_TOUR_CATS = [22, 23, 24, 25, 26];
-const FLAG_PNG = (iso3) => `https://img.bwfbadminton.com/image/upload/v2/assets/flag-circle-svg-custom/${iso3}.png`;
+// BWF's flag CDN is keyed by IOC code (TPE, INA, DEN...; but SGP), while player models give
+// ISO3 for some countries (TWN, IDN, ...): TWN.png is a 404 → broken image.
+const IOC = { TWN: "TPE", IDN: "INA", DNK: "DEN", MYS: "MAS", DEU: "GER", NLD: "NED", CHE: "SUI", PRT: "POR",
+  VNM: "VIE", PHL: "PHI", ARE: "UAE", SAU: "KSA", ZAF: "RSA", BHR: "BRN", MCO: "MON", SIN: "SGP" };
+const FLAG_PNG = (code) => `https://img.bwfbadminton.com/image/upload/v2/assets/flag-circle-svg-custom/${IOC[code] || code}.png`;
 const bwf = (path, params) => getJSON(`${BWF}${path}?${qs(params)}`, { Origin: "https://bwfbadminton.com", Referer: "https://bwfbadminton.com/" });
 
 const nameKey = (n) => n.replace(/[\s.\-]+/g, " ").trim().toLowerCase();
