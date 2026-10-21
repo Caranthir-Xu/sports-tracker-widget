@@ -30,6 +30,8 @@ export const className = `
   user-select: none;
 
   * { box-sizing: border-box; }
+  [data-root] { overflow-y: auto; overscroll-behavior: contain; border-radius: 22px; scrollbar-width: none; }
+  [data-root]::-webkit-scrollbar { display: none; }
   img { display: block; -webkit-user-drag: none; }
 
   .card {
@@ -423,6 +425,13 @@ function savePos(p) {
   try { localStorage.setItem(POS_KEY, JSON.stringify(p)); } catch (e) { /* not persisted */ }
 }
 
+// Offset + a height cap so a long, expanded column scrolls instead of running off the screen
+// (origin is top: 10px; keep 10px free at the bottom).
+function applyPos(root, p) {
+  root.style.transform = `translate(${p.x}px, ${p.y}px)`;
+  root.style.maxHeight = `calc(100vh - ${20 + p.y}px)`;
+}
+
 function startDrag(e) {
   if (e.button !== 0) return;
   e.preventDefault();
@@ -432,7 +441,7 @@ function startDrag(e) {
   let pos = start;
   const move = (ev) => {
     pos = clampPos({ x: start.x + ev.clientX - sx, y: start.y + ev.clientY - sy });
-    root.style.transform = `translate(${pos.x}px, ${pos.y}px)`;
+    applyPos(root, pos);
   };
   const up = () => {
     document.removeEventListener("mousemove", move);
@@ -445,7 +454,7 @@ function startDrag(e) {
 
 function resetPos(e) {
   savePos({ x: 0, y: 0 });
-  e.currentTarget.closest("[data-root]").style.transform = "translate(0px, 0px)";
+  applyPos(e.currentTarget.closest("[data-root]"), { x: 0, y: 0 });
 }
 
 const Header = ({ children, style }) => (
@@ -1458,7 +1467,7 @@ export const render = ({ output, error }) => {
   const tz = data.timezone || "UTC";
   const pos = loadPos();
   return (
-    <div data-root="" style={{ transform: `translate(${pos.x}px, ${pos.y}px)` }}>
+    <div data-root="" style={{ transform: `translate(${pos.x}px, ${pos.y}px)`, maxHeight: `calc(100vh - ${20 + pos.y}px)` }}>
       {data.sports.map((sp) =>
         sp.id === "f1" ? <F1Card sport={sp} tz={tz} key={sp.id} /> : <H2HCard sport={sp} tz={tz} key={sp.id} />
       )}
