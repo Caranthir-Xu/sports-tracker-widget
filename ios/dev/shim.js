@@ -19,11 +19,23 @@ function viaCffi(url) {
   return new Promise((res, rej) => execFile(path.join(ROOT, ".venv/bin/python"), [path.join(__dirname, "cffi.py"), url],
     { maxBuffer: 64 << 20 }, (e, out, err) => (e ? rej(e) : res({ code: +err, body: out }))));
 }
+function send(url, method, headers, body) {
+  return new Promise((res, rej) => {
+    const req = https.request(url, { method, headers: Object.assign({ "Content-Length": Buffer.byteLength(body || "") }, headers) }, (r) => {
+      let b = ""; r.setEncoding("utf8"); r.on("data", (c) => (b += c)); r.on("end", () => res({ code: r.statusCode, body: b, headers: r.headers }));
+    });
+    req.on("error", rej); req.setTimeout(25000, () => req.destroy(new Error("timeout")));
+    req.end(body || "");
+  });
+}
 class Request {
-  constructor(u) { this.url = u; this.headers = {}; }
+  constructor(u) { this.url = u; this.headers = {}; this.method = "GET"; this.body = null; }
   async loadString() {
-    const r = /bwfbadminton/.test(this.url) ? await viaCffi(this.url) : await get(this.url, this.headers);
-    this.response = { statusCode: r.code, headers: r.headers || {} };
+    const r = /bwfbadminton/.test(this.url) ? await viaCffi(this.url)
+      : this.method !== "GET" || this.body != null ? await send(this.url, this.method, this.headers, this.body) : await get(this.url, this.headers);
+    // Like Scriptable: response.cookies = [{name, value}] from Set-Cookie.
+    const sc = [].concat((r.headers || {})["set-cookie"] || []);
+    this.response = { statusCode: r.code, headers: r.headers || {}, cookies: sc.map((c) => { const [nv] = c.split(";"); const i = nv.indexOf("="); return { name: nv.slice(0, i), value: nv.slice(i + 1) }; }) };
     return r.body;
   }
 }
@@ -36,7 +48,7 @@ const Timer = { schedule: (ms, rep, fn) => { const t = setTimeout(fn, ms); t.unr
 function load(file) {
   const module = { exports: {} };
   vm.runInNewContext(fs.readFileSync(file, "utf8"), { module, exports: module.exports, Request, FileManager, Timer,
-    console, Promise, Date, JSON, Math, encodeURIComponent, URL, setTimeout, Set, Array, Object, String, Number });
+    console, Promise, Date, JSON, Math, encodeURIComponent, URL, setTimeout, Set, Array, Object, String, Number, Buffer });
   return module.exports;
 }
 module.exports = { load, ROOT };

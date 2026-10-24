@@ -692,7 +692,20 @@ function trackSVG(track) {
     ${cuts.length === 2 ? `<div class="legend">${["S1", "S2", "S3"].map((t, i) => `<b style="color:${SECTOR[i]}">${t}</b>`).join(" ")}</div>` : ""}</div>`;
 }
 
+// Live timing tower (= desktop LiveTower): session + part + clock, every car with tyre, lap, gap, PIT/OUT.
+function f1LiveHTML(lv) {
+  const racing = lv.session === "Race" || lv.session === "Sprint";
+  const hmsSec = (t) => String(t || "").split(":").reduce((a, x) => a * 60 + (+x || 0), 0);
+  const clock = racing && lv.laps ? `Lap ${lv.laps}${lv.total_laps ? "/" + lv.total_laps : ""}`
+    : lv.remaining ? liveClockHTML({ seconds: hmsSec(lv.remaining), as_of: lv.clock_utc, running: lv.running }) : esc(lv.status || "");
+  return `<div class="f1t open lvt"><div class="f1t-h"><b class="f1x"><u class="dot"></u> ${esc((lv.session || "").toUpperCase())}${lv.part ? " · " + esc(lv.part) : ""}</b><span>${clock}</span></div>`
+    + lv.rows.map((r) => `<div class="f1t-r ${r.self ? "me" : ""} ${r.out ? "out" : ""}" ${r.self ? `style="box-shadow:inset 3px 0 0 ${r.color || "#fff"}"` : ""}><span class="p f1x">${r.pos || ""}</span><span class="c" style="background:${r.color || "#888"}"></span><span class="cd f1x">${esc(r.code)}</span><span class="tm">${r.pit ? '<em class="pit">PIT</em>' : r.out ? "OUT" : esc(r.team || "")}</span>${tyreHTML(r.tyre)}<span class="v">${esc(r.value || "–")}</span><span class="x">${esc(r.extra || "")}</span></div>`).join("")
+    + `</div>`;
+}
+
 function f1HTML(sport) {
+  // Live timing only while fresh (the detail page fetches it on open).
+  const live = sport.live && sport.live.rows && sport.live.rows.length && Date.now() - Date.parse(sport.live.as_of) < 3 * 60000 ? sport.live : null;
   const ev = (sport.subjects.find((s) => s.next) || {}).next;
   const [c1, c2] = f1Colors(sport);
   const carbon = "repeating-linear-gradient(45deg,rgba(255,255,255,.025) 0 2px,transparent 2px 4px),repeating-linear-gradient(-45deg,rgba(0,0,0,.09) 0 2px,transparent 2px 4px)";
@@ -715,10 +728,15 @@ function f1HTML(sport) {
     h += `<div class="driver ${isHot(l) ? "hot" : ""}" style="background:linear-gradient(100deg,${hex2rgba(s.color, .4)},${hex2rgba(s.color, .05)} 70%)">
       <div class="plate" style="background:${s.color || "#888"}"><span class="f1x">${esc(s.badge)}</span></div>
       <div class="who"><b class="f1x">${esc(s.short)}</b><div class="dim">${esc(s.team || "")}</div></div>
-      <div class="stat tap" onclick="tbl('last_race')"><i>LATEST</i><b class="f1x">${esc(latestF1(s).value)}</b><span>${esc(latestF1(s).label)}</span></div>
+      ${(() => { // live position overrides LATEST while a session is on
+        const me = live && live.rows.find((x) => x.code === s.short);
+        return me ? `<div class="stat tap" onclick="tbl('last_race')"><i class="lv">LIVE</i><b class="f1x">P${me.pos}</b><span>${esc(me.best || "–")}</span></div>`
+          : `<div class="stat tap" onclick="tbl('last_race')"><i>LATEST</i><b class="f1x">${esc(latestF1(s).value)}</b><span>${esc(latestF1(s).label)}</span></div>`;
+      })()}
       <div class="stat tap" onclick="tbl('standings')"><i>STANDINGS</i><b class="f1x">${r ? "P" + r.position : "–"}${r ? chgHTML(r.change) : ""}</b><span>${r ? Math.round(r.points) + " pts" : ""}</span></div></div>`;
   }
   // Timing-tower tables, toggled by the stats above.
+  if (live) h += f1LiveHTML(live);
   for (const kind of ["last_race", "standings"]) {
     // The "last_race" panel shows the latest finished session of the weekend when there is one.
     const t = kind === "last_race" ? (sport.tables || {}).last_session || (sport.tables || {}).last_race : (sport.tables || {})[kind];
@@ -945,6 +963,7 @@ function detailHTML(data, focus) {
   .plate{width:40px;height:32px;display:flex;align-items:center;justify-content:center;transform:skewX(-12deg);border-radius:3px;box-shadow:inset 0 -3px 0 rgba(0,0,0,.25)}.plate span{transform:skewX(12deg);font-size:22px}
   .who{flex:1}.driver .who b{font-size:21px}.stat{width:68px;text-align:right}.stat i{display:block;font-size:8px;font-style:normal;color:rgba(255,255,255,.45)}.stat b{font-size:24px}.stat span{display:block;font-size:10px;color:rgba(255,255,255,.5)}
   .stat.tap i{border-bottom:1px dotted rgba(255,255,255,.4);display:inline-block}
+  .f1t.lvt{display:block}.lvt .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#ff453a;box-shadow:0 0 6px #ff453a;vertical-align:2px;text-decoration:none}.f1t-r.out{opacity:.4}.f1t-r .pit{font-style:normal;font-size:9px;font-weight:800;padding:0 4px;border-radius:3px;background:rgba(255,255,255,.85);color:#111}.stat i.lv{color:#ff453a}
   .f1t-r .cg{width:24px;font-size:9px}.f1t-r .tyre{flex:none;width:12px;text-align:center;font-size:12px;font-weight:900;font-family:-apple-system,sans-serif}.stat b .up,.stat b .down{font-family:-apple-system,sans-serif;font-size:10px;font-style:normal;vertical-align:4px;margin-left:2px}
   .f1t{display:none;margin-top:8px;border-radius:10px;overflow:hidden;background:rgba(0,0,0,.42)}.f1t.open{display:block}
   .f1t-h{display:flex;justify-content:space-between;align-items:baseline;padding:7px 10px 6px 16px;position:relative;background:rgba(255,255,255,.06)}

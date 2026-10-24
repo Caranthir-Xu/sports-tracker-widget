@@ -271,7 +271,11 @@ Event also has:
   races GapToLeader, else best − P1 best), tyre (current stint compound), laps, pit, out, self } ],
   as_of }. Widget `liveF1` uses it only if as_of < 3 min old: `LiveTower` (open, red dot, clock via
   LiveClock, PIT tag, out rows dimmed) above the session tables, and the driver's stat shows LIVE P#
-  + best lap. iOS has no F1 live timing yet.
+  + best lap. iOS: `f1Live()` in Sports Data.js (full runs = detail page only; widgets refresh too
+  rarely) builds the same `live`; the detail page shows `f1LiveHTML` + LIVE stats. It doesn't
+  auto-update: reopen the detail page for a new snapshot. The feed's AWS load balancer is sticky:
+  `f1LiveSnapshot` sends the negotiate response's AWSALB/AWSALBCORS cookies back by hand (Scriptable
+  `response.cookies`), otherwise later calls get "No Connection with that ID".
 - NHL live mode: `fetch.py --live` calls providers' optional `refresh_live(cfg, subject)`.
   NHL polls `gamecenter/{id}/landing` only if the next game is live or within −15 min…+5 h of
   its start (otherwise no request); updates score, `live`, `detail` (goals so far). When the

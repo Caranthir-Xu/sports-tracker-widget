@@ -378,6 +378,80 @@ async function f1SessionRows(s, followed) {
   });
 }
 
+// ---------- F1 live timing (= Python _live_snapshot / _live_rows / refresh_live_sport) ----------
+// F1's signalrcore feed needs no key. One Subscribe returns the full current state, read over HTTP
+// long polling. The AWS load balancer is sticky: send its AWSALB cookies back on every request,
+// or later calls land on another server ("No Connection with that ID").
+const LIVE_FEED = "https://livetiming.formula1.com/signalrcore";
+const LIVE_TOPICS = ["SessionInfo", "SessionStatus", "ExtrapolatedClock", "TimingData", "TimingAppData", "DriverList", "LapCount"];
+
+async function f1LiveSnapshot() {
+  let cookie = "";
+  const call = async (url, method, body) => {
+    const r = new Request(url);
+    r.method = method;
+    if (body != null) r.body = body;
+    r.headers = cookie ? { Cookie: cookie } : {};
+    r.timeoutInterval = 15;
+    const text = await r.loadString();
+    if (!cookie) {
+      const resp = r.response || {}, list = (resp.cookies || []).filter((c) => /^AWSALB/.test(c.name));
+      cookie = list.length ? list.map((c) => `${c.name}=${c.value}`).join("; ")
+        : (String((resp.headers || {})["Set-Cookie"] || "").match(/AWSALB(?:CORS)?=[^;,]+/g) || []).join("; ");
+    }
+    return text;
+  };
+  const tok = JSON.parse(await call(`${LIVE_FEED}/negotiate?negotiateVersion=1`, "POST", "")).connectionToken;
+  const url = `${LIVE_FEED}?id=${encodeURIComponent(tok)}`;
+  await call(url, "POST", '{"protocol":"json","version":1}\x1e');
+  await call(url, "GET");
+  await call(url, "POST", JSON.stringify({ type: 1, target: "Subscribe", arguments: [LIVE_TOPICS], invocationId: "0" }) + "\x1e");
+  for (let i = 0; i < 4; i++) {
+    for (const part of (await call(url, "GET")).split("\x1e")) {
+      if (!part.trim()) continue;
+      const m = JSON.parse(part);
+      if (m.type === 3 && m.invocationId === "0") return m.result || {};
+    }
+  }
+  return {};
+}
+
+const secsOf = (t) => { if (!t) return null; const i = t.lastIndexOf(":"); const v = (i >= 0 ? +t.slice(0, i) * 60 : 0) + +t.slice(i + 1); return isNaN(v) ? null : v; };
+
+function f1LiveRows(res, followed) {
+  const td = res.TimingData || {}, app = (res.TimingAppData || {}).Lines || {}, drivers = res.DriverList || {}, lines = td.Lines || {};
+  const part = td.SessionPart, racing = ["Race", "Sprint"].includes((res.SessionInfo || {}).Type);
+  const best = (l) => (part && Array.isArray(l.BestLapTimes) && l.BestLapTimes.length >= part ? (l.BestLapTimes[part - 1] || {}).Value : (l.BestLapTime || {}).Value);
+  const order = Object.keys(lines).sort((a, b) => (+lines[a].Position || 99) - (+lines[b].Position || 99));
+  const lead = order.length ? secsOf(best(lines[order[0]])) : null;
+  const rows = order.map((n) => {
+    const l = lines[n], d = drivers[n] || {}, st = (app[n] || {}).Stints || [], b = best(l);
+    let gap = "";
+    if (racing) { const g = l.Position !== "1" ? l.GapToLeader : ""; gap = (g && typeof g === "object" ? g.Value : g) || ""; }
+    else if (b && lead && secsOf(b) > lead) gap = `+${(secsOf(b) - lead).toFixed(3)}`;
+    return { pos: +l.Position || null, number: n, code: d.Tla || n, team: d.TeamName || null,
+      color: d.TeamColour ? `#${d.TeamColour}` : teamColour(d.TeamName), value: racing ? (l.LastLapTime || {}).Value : b, best: b,
+      extra: gap, tyre: st.length ? st[st.length - 1].Compound : null, laps: l.NumberOfLaps, pit: !!l.InPit,
+      out: !!(l.KnockedOut || l.Retired || l.Stopped), self: followed.has(+n) };
+  });
+  return [rows, part];
+}
+
+// Live tower while a session is within -5 min ... +15 min of its schedule; null otherwise.
+async function f1Live(sportCfg) {
+  const t = now();
+  const s = (await f1Sessions()).find((x) => parseDt(x.date_start) - 5 * 60000 <= t && t <= parseDt(x.date_end) + 15 * 60000);
+  if (!s) return null;
+  const res = await f1LiveSnapshot();
+  const info = res.SessionInfo || {};
+  if (!info.Name || !Object.keys((res.TimingData || {}).Lines || {}).length) return null;
+  const [rows, part] = f1LiveRows(res, new Set(sportCfg.subjects.map((x) => x.number)));
+  const clock = res.ExtrapolatedClock || {}, laps = res.LapCount || {};
+  return { session: SHORT_NAMES[info.Name] || info.Name, part: part ? `Q${part}` : null, status: (res.SessionStatus || {}).Status || null,
+    remaining: clock.Remaining || null, clock_utc: clock.Utc || null, running: !!clock.Extrapolating,
+    laps: laps.CurrentLap || null, total_laps: laps.TotalLaps || null, rows, as_of: iso(now()) };
+}
+
 async function f1Sport(sportCfg) {
   if (LITE) {
     const nextRace = (await getJSON(`${JOLPICA}/current/next.json`)).MRData.RaceTable.Races[0];
@@ -436,8 +510,11 @@ async function f1Sport(sportCfg) {
       }) };
     }
   }
+  let live = null;
+  try { live = await f1Live(sportCfg); } catch (e) { /* live timing is optional */ }
   return {
     next_round: nextRace ? +nextRace.round : null,
+    live,
     tables: {
       last_session: lastSession, // null -> clients fall back to last_race
       last_race: { title: race.raceName, subtitle: `Round ${race.round} · ${race.date}`,
