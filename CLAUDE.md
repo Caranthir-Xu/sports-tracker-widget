@@ -91,6 +91,7 @@ runs from a runtime copy:
 | F1 | ESPN `site.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard` | current weekend: per-session status + finishing order (names only, no times/teams) | No key; not affected by OpenF1's live lockout. |
 | F1 | MultiViewer `api.multiviewer.app/api/v1/circuits/{circuit_key}/{year}` | circuit outline `x/y`, `rotation`, `miniSectorsIndexes` | Unofficial. Some circuits (e.g. Singapore 61) have no mini-sector data. |
 | NHL | `api-web.nhle.com/v1` | `club-schedule-season/{TEAM}/now`, `standings/now`, `gamecenter/{id}/landing` (goals, shootout, SOG, three stars) | Unofficial, undocumented, no key. |
+| F1 | F1 live timing `livetiming.formula1.com/signalrcore` | live timing tower during sessions | No key (the old `/signalr` and `/static` need auth). SignalR Core over HTTP long polling: negotiate → handshake → Subscribe → read the completion (full current state). |
 | Badminton | BWF `extranet-lv.bwfbadminton.com/api/` | rankings, player prev/next match, calendar, day schedule, entry lists | Undocumented. Cloudflare blocks urllib/curl (403); `curl_cffi` with `impersonate="chrome"` works. No token. |
 
 BWF endpoints in use:
@@ -260,6 +261,17 @@ Event also has:
 - Widget layout: `F1Card` (Box Box style: flag, countdown, session strip, driver rows
   in team colour) for sport id `f1`; every other sport uses the generic `H2HCard`
   (Apple Sports style: matchup with logos for `next`, score row or per-game board for `last`).
+- F1 live timing (desktop): providers may expose `refresh_live_sport(sport_cfg, entry)`; the live job
+  merges its dict into the sport entry (`{"live": None}` clears). F1 takes one `_live_snapshot()`
+  per tick (curl_cffi; topics SessionInfo, SessionStatus, ExtrapolatedClock, TimingData,
+  TimingAppData, DriverList, LapCount) while a scheduled session is within −5 min…+15 min
+  (`_live_window`, schedule from the OpenF1 cache / Jolpica). Sport `live` = { session, part ("Q2",
+  from TimingData.SessionPart), status, remaining + clock_utc + running (session clock), laps,
+  rows: [ { pos, number, code, team, color, value (best lap; races: last lap), best, extra (gap:
+  races GapToLeader, else best − P1 best), tyre (current stint compound), laps, pit, out, self } ],
+  as_of }. Widget `liveF1` uses it only if as_of < 3 min old: `LiveTower` (open, red dot, clock via
+  LiveClock, PIT tag, out rows dimmed) above the session tables, and the driver's stat shows LIVE P#
+  + best lap. iOS has no F1 live timing yet.
 - NHL live mode: `fetch.py --live` calls providers' optional `refresh_live(cfg, subject)`.
   NHL polls `gamecenter/{id}/landing` only if the next game is live or within −15 min…+5 h of
   its start (otherwise no request); updates score, `live`, `detail` (goals so far). When the

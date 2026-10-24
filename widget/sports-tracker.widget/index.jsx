@@ -147,6 +147,11 @@ export const className = `
   .f1t-r .tm { flex: 1; min-width: 0; color: rgba(255, 255, 255, 0.45); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .f1t-r .v { text-align: right; white-space: nowrap; font-family: "SF Mono", Menlo, monospace; font-size: 9.5px; }
   .f1t-r .cg { width: 22px; text-align: right; }
+  .f1t.live { display: block; }
+  .f1t.live .f1t-h b .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #ff453a; box-shadow: 0 0 6px #ff453a; vertical-align: 2px; }
+  .f1t-r.out { opacity: 0.4; }
+  .f1t-r .pit { font-size: 8px; font-weight: 800; padding: 0 4px; border-radius: 3px; background: rgba(255, 255, 255, 0.85); color: #111; }
+  .stat .k .lv { color: #ff453a; }
   .f1t-r .tyre { flex: none; width: 10px; text-align: center; font-size: 10px; font-weight: 900; font-family: -apple-system, sans-serif; }
   .f1t-r .cg .chg { margin-left: 0; font-size: 8px; font-style: normal; }
   .f1t-r .cg .chg.same { color: rgba(255, 255, 255, 0.25); }
@@ -712,7 +717,45 @@ function Strip({ sessions, nextStart, tz, accent }) {
 }
 
 // Driver row: number plate, code/team, this weekend's session results, last race, standings.
-function Driver({ s, tz }) {
+// Live timing from the live job, only while fresh (it stops updating when the session ends).
+function liveF1(sport) {
+  const lv = sport.live;
+  return lv && lv.rows && lv.rows.length && Date.now() - Date.parse(lv.as_of) < 3 * 60000 ? lv : null;
+}
+
+// "01:23:45" / "00:12:34" -> seconds.
+const hms = (t) => (t || "").split(":").reduce((a, x) => a * 60 + (+x || 0), 0);
+
+// Live timing tower: session + part + clock, then every car (tyre, best/last lap, gap, PIT/OUT).
+function LiveTower({ live }) {
+  if (!live) return null;
+  const racing = live.session === "Race" || live.session === "Sprint";
+  return (
+    <div className="f1t open live">
+      <div className="f1t-h">
+        <b className="f1x"><span className="dot" /> {live.session}{live.part ? ` · ${live.part}` : ""}</b>
+        <span>{racing && live.laps ? `Lap ${live.laps}${live.total_laps ? "/" + live.total_laps : ""}` : live.remaining
+          ? <LiveClock lv={{ seconds: hms(live.remaining), as_of: live.clock_utc, running: live.running }} /> : live.status}</span>
+      </div>
+      <div className="f1t-body">
+        {live.rows.map((r) => (
+          <div className={`f1t-r ${r.self ? "me" : ""} ${r.out ? "out" : ""}`} key={r.number}
+               style={r.self ? { boxShadow: `inset 3px 0 0 ${r.color || "#fff"}` } : null}>
+            <span className="p f1x">{r.pos}</span>
+            <span className="c" style={{ background: r.color || "#888" }} />
+            <span className="cd f1x">{r.code}</span>
+            <span className="tm">{r.pit ? <span className="pit">PIT</span> : r.out ? "OUT" : r.team}</span>
+            <Tyre c={r.tyre} />
+            <span className="v">{r.value || "–"}</span>
+            <span className="x">{r.extra}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Driver({ s, tz, live }) {
   const color = s.color || "#888888";
   const last = s.last;
   const r = s.ranking;
@@ -720,6 +763,7 @@ function Driver({ s, tz }) {
   const weekend = ((s.next && s.next.sessions) || []).filter((x) => x.result);
   // Latest finished session this weekend (practice/quali/sprint/race), else the last race.
   const latest = weekend.length ? weekend[weekend.length - 1] : null;
+  const me = live && live.rows.find((x) => x.code === s.short); // live position overrides
   return (
     <div className={`driver ${hot ? "hot" : ""}`}
          style={hot ? null : { background: `linear-gradient(100deg, ${rgba(color, 0.38)}, ${rgba(color, 0.05)} 70%)` }}>
@@ -735,9 +779,9 @@ function Driver({ s, tz }) {
         )}
       </div>
       <div className="stat click" onClick={(e) => toggleTable(e, "last_race")}>
-        <div className="k">LATEST</div>
-        <div className="v f1x">{latest ? latest.result.summary : last && last.result ? last.result.summary : "–"}</div>
-        <div className="s">{latest ? { Qualifying: "Quali", "Sprint Quali": "Sprint Q" }[latest.name] || latest.name : last ? shortTitle(last.title).replace(" GP", "") : ""}</div>
+        <div className="k">{me ? <span className="lv">LIVE</span> : "LATEST"}</div>
+        <div className="v f1x">{me ? `P${me.pos}` : latest ? latest.result.summary : last && last.result ? last.result.summary : "–"}</div>
+        <div className="s">{me ? me.best || "–" : latest ? { Qualifying: "Quali", "Sprint Quali": "Sprint Q" }[latest.name] || latest.name : last ? shortTitle(last.title).replace(" GP", "") : ""}</div>
       </div>
       <div className="stat click" onClick={(e) => toggleTable(e, "standings")}>
         <div className="k">STANDINGS</div>
@@ -861,8 +905,9 @@ function F1Card({ sport, tz }) {
           <div className="dim" style={{ marginBottom: 8 }}>Season complete</div>
         )}
         {sport.subjects.map((s) => (
-          <div key={s.id}><Driver s={s} tz={tz} /><Stale s={s} L={L} /></div>
+          <div key={s.id}><Driver s={s} tz={tz} live={liveF1(sport)} /><Stale s={s} L={L} /></div>
         ))}
+        <LiveTower live={liveF1(sport)} />
         {sport.tables && <F1Table kind="last_race" table={sport.tables.last_session || sport.tables.last_race} stale={sport.tables_stale} />}
         {sport.tables && <F1Table kind="standings" table={sport.tables.standings} stale={sport.tables_stale} />}
       </div>

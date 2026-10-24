@@ -197,6 +197,17 @@ def live_main():
             provider = importlib.import_module(f"providers.{sport['provider']}")
         except Exception:
             continue
+        # Optional sport-level live data (F1 live timing tower); {"live": None} clears it.
+        if hasattr(provider, "refresh_live_sport"):
+            entry = next((sp for sp in data["sports"] if sp["id"] == sport["id"]), None)
+            try:
+                upd = provider.refresh_live_sport(sport, entry) if entry is not None else None
+            except Exception:
+                traceback.print_exc(file=sys.stderr)
+                upd = None
+            if upd is not None:
+                entry.update(upd)
+                changed.append(sport["id"])
         if not hasattr(provider, "refresh_live"):
             continue
         for cfg in sport["subjects"]:

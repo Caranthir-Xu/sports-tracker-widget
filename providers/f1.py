@@ -539,3 +539,107 @@ def fetch_sport(sport_cfg):
                       "subtitle": f"After round {lists[0]['round']}" if lists else None,
                       "rows": standings},
     }}
+
+
+# ---------- live timing (fetch.py --live, every 20 s) ----------
+# F1's own live-timing feed (SignalR Core) needs no key, unlike OpenF1 during a session. One
+# Subscribe returns the full current state, so each tick takes a fresh snapshot over plain HTTP
+# long polling (negotiate, handshake, subscribe, read) instead of holding a socket open.
+
+LIVE_FEED = "https://livetiming.formula1.com/signalrcore"
+LIVE_TOPICS = ["SessionInfo", "SessionStatus", "ExtrapolatedClock", "TimingData", "TimingAppData", "DriverList", "LapCount"]
+LIVE_BEFORE, LIVE_AFTER = timedelta(minutes=5), timedelta(minutes=15)
+
+
+def _live_snapshot():
+    from curl_cffi import requests  # same dependency as the badminton provider
+    s = requests.Session(impersonate="chrome")
+    tok = s.post(f"{LIVE_FEED}/negotiate?negotiateVersion=1", timeout=15).json()["connectionToken"]
+    s.post(f"{LIVE_FEED}?id={tok}", data='{"protocol":"json","version":1}\x1e', timeout=15)
+    s.get(f"{LIVE_FEED}?id={tok}", timeout=15)  # handshake ack
+    s.post(f"{LIVE_FEED}?id={tok}", timeout=15, data=json.dumps(
+        {"type": 1, "target": "Subscribe", "arguments": [LIVE_TOPICS], "invocationId": "0"}) + "\x1e")
+    for _ in range(4):
+        for part in s.get(f"{LIVE_FEED}?id={tok}", timeout=30).text.split("\x1e"):
+            if part.strip():
+                msg = json.loads(part)
+                if msg.get("type") == 3 and msg.get("invocationId") == "0":
+                    return msg.get("result") or {}
+    return {}
+
+
+def _secs(t):
+    """'1:34.893' -> 94.893; None for empty."""
+    if not t:
+        return None
+    m, _, sec = t.rpartition(":")
+    try:
+        return (int(m) * 60 if m else 0) + float(sec)
+    except ValueError:
+        return None
+
+
+def _live_window():
+    """The session to show live timing for, or None (schedule from OpenF1 cache / Jolpica)."""
+    now = now_utc()
+    for s in _sessions():
+        if parse_dt(s["date_start"]) - LIVE_BEFORE <= now <= parse_dt(s["date_end"]) + LIVE_AFTER:
+            return s
+    return None
+
+
+def _live_rows(res, followed):
+    td, app = res.get("TimingData") or {}, (res.get("TimingAppData") or {}).get("Lines") or {}
+    drivers, lines = res.get("DriverList") or {}, td.get("Lines") or {}
+    part = td.get("SessionPart")  # qualifying: 1/2/3
+    racing = (res.get("SessionInfo") or {}).get("Type") in ("Race", "Sprint")
+
+    def best(l):
+        if part and isinstance(l.get("BestLapTimes"), list) and len(l["BestLapTimes"]) >= part:
+            return (l["BestLapTimes"][part - 1] or {}).get("Value")
+        return (l.get("BestLapTime") or {}).get("Value")
+
+    order = sorted(lines, key=lambda n: int(lines[n].get("Position") or 99))
+    lead = _secs(best(lines[order[0]])) if order else None
+    rows = []
+    for n in order:
+        l, d = lines[n], drivers.get(n) or {}
+        stints = (app.get(n) or {}).get("Stints") or []
+        b = best(l)
+        if racing:
+            gap = l.get("GapToLeader") if l.get("Position") != "1" else ""
+            gap = (gap.get("Value") if isinstance(gap, dict) else gap) or ""
+        else:
+            gap = f"+{_secs(b) - lead:.3f}" if b and lead and _secs(b) > lead else ""
+        rows.append({
+            "pos": int(l.get("Position") or 0) or None, "number": n, "code": d.get("Tla") or n,
+            "team": d.get("TeamName"), "color": f"#{d['TeamColour']}" if d.get("TeamColour") else _team_colour(d.get("TeamName")),
+            "value": (l.get("LastLapTime") or {}).get("Value") if racing else b,  # race: last lap; else best
+            "best": b, "extra": gap, "tyre": stints[-1].get("Compound") if stints else None,
+            "laps": l.get("NumberOfLaps"), "pit": bool(l.get("InPit")),
+            "out": bool(l.get("KnockedOut") or l.get("Retired") or l.get("Stopped")),
+            "self": int(n) in followed,
+        })
+    return rows, part
+
+
+def refresh_live_sport(sport_cfg, entry):
+    """Live timing tower for the F1 sport entry while a session is on: {"live": {...}};
+    {"live": None} once it is over (to clear it); None when there is nothing to change."""
+    s = _live_window()
+    if not s:
+        return {"live": None} if entry.get("live") else None
+    res = _live_snapshot()
+    info, status = res.get("SessionInfo") or {}, (res.get("SessionStatus") or {}).get("Status")
+    if not info or not (res.get("TimingData") or {}).get("Lines"):
+        return None
+    rows, part = _live_rows(res, {s_["number"] for s_ in sport_cfg["subjects"]})
+    name = SHORT_NAMES.get(info.get("Name"), info.get("Name"))
+    clock = res.get("ExtrapolatedClock") or {}
+    return {"live": {
+        "session": name, "part": f"Q{part}" if part else None, "status": status,
+        "remaining": clock.get("Remaining"), "clock_utc": clock.get("Utc"),
+        "running": bool(clock.get("Extrapolating")),  # clock counts down from clock_utc
+        "laps": (res.get("LapCount") or {}).get("CurrentLap"), "total_laps": (res.get("LapCount") or {}).get("TotalLaps"),
+        "rows": rows, "as_of": iso(now_utc()),
+    }}
