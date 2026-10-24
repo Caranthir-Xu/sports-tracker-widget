@@ -147,10 +147,11 @@ export const className = `
   .f1t-r .tm { flex: 1; min-width: 0; color: rgba(255, 255, 255, 0.45); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .f1t-r .v { text-align: right; white-space: nowrap; font-family: "SF Mono", Menlo, monospace; font-size: 9.5px; }
   .f1t-r .cg { width: 22px; text-align: right; }
+  .f1t-r .tyre { flex: none; width: 10px; text-align: center; font-size: 10px; font-weight: 900; font-family: -apple-system, sans-serif; }
   .f1t-r .cg .chg { margin-left: 0; font-size: 8px; font-style: normal; }
   .f1t-r .cg .chg.same { color: rgba(255, 255, 255, 0.25); }
   .stat .v .chg { font-size: 9px; font-style: normal; vertical-align: 3px; }
-  .f1t-r .x { width: 26px; text-align: right; color: rgba(255, 255, 255, 0.45); font-family: "SF Mono", Menlo, monospace; font-size: 9px; }
+  .f1t-r .x { min-width: 38px; text-align: right; color: rgba(255, 255, 255, 0.45); font-family: "SF Mono", Menlo, monospace; font-size: 9px; }
 
   /* ---- head-to-head (NHL, badminton) ---- */
   .subj + .subj { margin-top: 12px; padding-top: 11px; border-top: 0.5px solid rgba(255, 255, 255, 0.12); }
@@ -717,6 +718,8 @@ function Driver({ s, tz }) {
   const r = s.ranking;
   const hot = isHot(last, tz);
   const weekend = ((s.next && s.next.sessions) || []).filter((x) => x.result);
+  // Latest finished session this weekend (practice/quali/sprint/race), else the last race.
+  const latest = weekend.length ? weekend[weekend.length - 1] : null;
   return (
     <div className={`driver ${hot ? "hot" : ""}`}
          style={hot ? null : { background: `linear-gradient(100deg, ${rgba(color, 0.38)}, ${rgba(color, 0.05)} 70%)` }}>
@@ -732,9 +735,9 @@ function Driver({ s, tz }) {
         )}
       </div>
       <div className="stat click" onClick={(e) => toggleTable(e, "last_race")}>
-        <div className="k">LAST RACE</div>
-        <div className="v f1x">{last && last.result ? last.result.summary : "–"}</div>
-        <div className="s">{last ? shortTitle(last.title).replace(" GP", "") : ""}</div>
+        <div className="k">LATEST</div>
+        <div className="v f1x">{latest ? latest.result.summary : last && last.result ? last.result.summary : "–"}</div>
+        <div className="s">{latest ? { Qualifying: "Quali", "Sprint Quali": "Sprint Q" }[latest.name] || latest.name : last ? shortTitle(last.title).replace(" GP", "") : ""}</div>
       </div>
       <div className="stat click" onClick={(e) => toggleTable(e, "standings")}>
         <div className="k">STANDINGS</div>
@@ -753,8 +756,15 @@ function toggleTable(e, kind) {
   });
 }
 
+// Pirelli compound colours; shown as the compound's initial in that colour.
+const TYRES = { SOFT: "#ff3333", MEDIUM: "#ffd12e", HARD: "#f0f0ec", INTERMEDIATE: "#43b02a", WET: "#0067ad" };
+const Tyre = ({ c }) => (c && TYRES[c]
+  ? <span className="tyre" style={{ color: TYRES[c] }}>{c[0]}</span>
+  : <span className="tyre" />);
+
 function F1Table({ kind, table, stale }) {
   if (!table) return null;
+  const tyres = table.rows.some((r) => r.tyre);
   return (
     <div className="f1t" data-kind={kind}>
       <div className="f1t-h">
@@ -770,6 +780,7 @@ function F1Table({ kind, table, stale }) {
             <span className="cd f1x">{r.code}</span>
             <span className="tm">{r.team}</span>
             {kind === "standings" && <span className="cg"><Change n={r.change} /></span>}
+            {tyres && <Tyre c={r.tyre} />}
             <span className="v">{r.value}</span>
             <span className="x">{r.extra}</span>
           </div>
@@ -852,7 +863,7 @@ function F1Card({ sport, tz }) {
         {sport.subjects.map((s) => (
           <div key={s.id}><Driver s={s} tz={tz} /><Stale s={s} L={L} /></div>
         ))}
-        {sport.tables && <F1Table kind="last_race" table={sport.tables.last_race} stale={sport.tables_stale} />}
+        {sport.tables && <F1Table kind="last_race" table={sport.tables.last_session || sport.tables.last_race} stale={sport.tables_stale} />}
         {sport.tables && <F1Table kind="standings" table={sport.tables.standings} stale={sport.tables_stale} />}
       </div>
     </div>

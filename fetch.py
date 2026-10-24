@@ -43,6 +43,21 @@ def profile_fields(src, cfg):
     return {k: cfg.get(k, src.get(k)) for k in PROFILE_KEYS}
 
 
+def carry_missing(subj, old):
+    """Keep display extras a degraded source run couldn't provide (e.g. F1 during an OpenF1
+    lockout: no team/colour, no circuit outline or flag) from the previous snapshot."""
+    for k in PROFILE_KEYS:
+        if subj.get(k) is None and old.get(k) is not None:
+            subj[k] = old[k]
+    for key in ("next", "last"):
+        new_ev, old_ev = subj.get(key) or {}, old.get(key) or {}
+        if new_ev and new_ev.get("title") == old_ev.get("title") and \
+                (new_ev.get("start") or "")[:10] == (old_ev.get("start") or "")[:10]:
+            for f in ("track", "image", "location"):
+                if new_ev.get(f) is None and old_ev.get(f) is not None:
+                    new_ev[f] = old_ev[f]
+
+
 def carry_live(subj, old):
     """The full run doesn't fetch live state; keep the live job's last values for the same
     in-progress event so the widget's live clock doesn't blank out until the next live poll."""
@@ -115,6 +130,7 @@ def main():
                 subj = {**base, **profile_fields(profile, cfg),
                         "updated_at": iso(now_utc()), "stale": False, "error": None, **data}
                 carry_live(subj, previous.get(cfg["id"], {}))
+                carry_missing(subj, previous.get(cfg["id"], {}))
             except Exception as e:
                 failures += 1
                 traceback.print_exc(file=sys.stderr)

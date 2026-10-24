@@ -86,8 +86,9 @@ runs from a runtime copy:
 ## Data sources
 | Sport | Source | Used for | Notes |
 |---|---|---|---|
-| F1 | OpenF1 `api.openf1.org/v1` | `meetings`, `sessions` (schedule), `session_result` (positions incl. practice) | Free for historical data. Live-session access may need a paid account; if blocked during a session, F1 goes stale until it ends. |
+| F1 | OpenF1 `api.openf1.org/v1` | `meetings`, `sessions` (schedule), `session_result` (positions incl. practice), `drivers` | Free, but while ANY F1 session is live it answers 401 to everything (even past sessions) until it ends. All calls go through `_openf1` / iOS `openf1()`, which keep a last-good copy on disk (`cache/openf1/`, iOS `openf1_*.json`). |
 | F1 | Jolpica `api.jolpi.ca/ergast/f1` | `current/driverStandings.json` | Ergast successor. ~4 req/s, 500 req/h limit. |
+| F1 | ESPN `site.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard` | current weekend: per-session status + finishing order (names only, no times/teams) | No key; not affected by OpenF1's live lockout. |
 | F1 | MultiViewer `api.multiviewer.app/api/v1/circuits/{circuit_key}/{year}` | circuit outline `x/y`, `rotation`, `miniSectorsIndexes` | Unofficial. Some circuits (e.g. Singapore 61) have no mini-sector data. |
 | NHL | `api-web.nhle.com/v1` | `club-schedule-season/{TEAM}/now`, `standings/now`, `gamecenter/{id}/landing` (goals, shootout, SOG, three stars) | Unofficial, undocumented, no key. |
 | Badminton | BWF `extranet-lv.bwfbadminton.com/api/` | rankings, player prev/next match, calendar, day schedule, entry lists | Undocumented. Cloudflare blocks urllib/curl (403); `curl_cffi` with `impersonate="chrome"` works. No token. |
@@ -241,8 +242,20 @@ Event also has:
   start lights next to the countdown (lit = 5 − whole days left, all off + "LIGHTS OUT" when
   live); slanted (skewX −12°) session chips and team-colour number plates; tables styled as a
   timing tower (zebra rows, monospace times, team-colour edge on followed drivers).
+- F1 during an OpenF1 lockout: schedule = cached OpenF1, else Jolpica `current.json` (`_jolpica_sessions`,
+  typical durations, no circuit/flag); session status/results of the current weekend = ESPN
+  (`_espn_weekend`, matched by session name + start ±6 h, drivers by accent-folded surname);
+  last race result = Jolpica (`_jolpica_race_result`); team/colour/track/flag carried over from the
+  previous snapshot (`carry_missing` / iOS `carryMissing`); table colours fall back to `TEAM_COLOURS`
+  (OpenF1 2026 team_colour by folded team name, `_team_colour` / iOS `teamColour`). Sport table `last_session` = latest
+  finished non-race session of the weekend: OpenF1 `_openf1_session_table` when reachable (value =
+  best lap "1:34.893" — qualifying uses the furthest Q segment reached; extra = gap "+0.168"; `tyre` =
+  compound of that best lap from `laps` + `stints`: SOFT/MEDIUM/HARD/INTERMEDIATE/WET), else ESPN's
+  order (code/team from Jolpica standings, no times/tyres). Tables render the tyre as a Pirelli-
+  coloured letter (`Tyre` / iOS `tyreHTML`) when any row has one.
 - F1 driver row: car number (on plate), code + team, newest 3 session results of the current
-  weekend (Q/SPR/SQ/FP), then LAST RACE and STANDINGS stat columns (▲/▼ since the previous round;
+  weekend (Q/SPR/SQ/FP), then LATEST (newest finished session this weekend, else the last race;
+  click → `tables.last_session || tables.last_race`) and STANDINGS stat columns (▲/▼ since the previous round;
   iOS caches each finished round's standings as `f1_standings_<season>_<round>.json`). No headshots (data still has `image`).
 - Widget layout: `F1Card` (Box Box style: flag, countdown, session strip, driver rows
   in team colour) for sport id `f1`; every other sport uses the generic `H2HCard`

@@ -85,12 +85,75 @@ const OPENF1 = "https://api.openf1.org/v1";
 const JOLPICA = "https://api.jolpi.ca/ergast/f1";
 const MULTIVIEWER = "https://api.multiviewer.app/api/v1/circuits";
 const SHORT_NAMES = { "Practice 1": "FP1", "Practice 2": "FP2", "Practice 3": "FP3", "Sprint Qualifying": "Sprint Quali", "Sprint Shootout": "Sprint Quali" };
+const ESPN_F1 = "https://site.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard";
+
+// OpenF1 with a last-good copy on disk (= Python _openf1): while any F1 session is live OpenF1
+// answers 401 for everything, which left F1 stale for hours on race weekends.
+async function openf1(path) {
+  const file = `openf1_${path.replace(/[^a-z0-9]+/gi, "_")}.json`;
+  try {
+    const data = await getJSON(`${OPENF1}/${path}`);
+    writeJSON(file, data);
+    return data;
+  } catch (e) {
+    const cached = readJSON(file);
+    if (cached) return cached;
+    throw e;
+  }
+}
+
+const ESPN_NAMES = { FP1: "FP1", FP2: "FP2", FP3: "FP3", QUAL: "Qualifying", RACE: "Race", SPRINT: "Sprint", SR: "Sprint", SS: "Sprint Quali", SQ: "Sprint Quali" };
+const fold = (name) => String((name || "").split(/\s+/).pop() || "").normalize("NFKD").replace(/[^\x00-\x7f]/g, "").toLowerCase();
+// ESPN's current F1 event: {short session name: {state, order: [surname...], date}} (= Python _espn_weekend).
+let espnWk = null;
+async function f1Espn() {
+  if (espnWk) return espnWk;
+  espnWk = {};
+  try {
+    const e = ((await getJSON(ESPN_F1)).events || [])[0];
+    ((e && e.competitions) || []).forEach((c) => {
+      const name = ESPN_NAMES[String((c.type || {}).abbreviation || "").toUpperCase()];
+      if (!name) return;
+      const st = (c.status || {}).type || {};
+      const order = (c.competitors || []).slice().sort((a, b) => (a.order || 99) - (b.order || 99)).map((x) => fold((x.athlete || {}).fullName));
+      const done = st.completed || ["STATUS_FINAL", "STATUS_SESSION_COMPLETE"].includes(st.name);
+      espnWk[name] = { state: done && order.length ? "final" : st.state === "in" ? "live" : "scheduled", order, date: c.date };
+    });
+  } catch (e) { /* optional */ }
+  return espnWk;
+}
+function espnFor(s) {
+  const e = (espnWk || {})[SHORT_NAMES[s.session_name] || s.session_name];
+  return e && e.date && Math.abs(parseDt(e.date) - parseDt(s.date_start)) < 6 * 3600000 ? e : null;
+}
+
+// Season schedule from Jolpica in OpenF1's shape (= Python _jolpica_sessions), when OpenF1 is locked
+// and nothing is cached. No circuit/flag: fetchAll carries them over from the previous snapshot.
+const JOLPICA_SESSIONS = [["FirstPractice", "Practice 1", 60], ["SecondPractice", "Practice 2", 60], ["ThirdPractice", "Practice 3", 60],
+  ["SprintQualifying", "Sprint Qualifying", 45], ["Sprint", "Sprint", 60], ["Qualifying", "Qualifying", 60], [null, "Race", 120]];
+async function f1JolpicaSessions() {
+  const out = [];
+  (await getJSON(`${JOLPICA}/current.json`)).MRData.RaceTable.Races.forEach((r) => {
+    JOLPICA_SESSIONS.forEach(([key, name, min]) => {
+      const slot = key ? r[key] : r;
+      if (!slot || !slot.time) return;
+      const start = Date.parse(`${slot.date}T${slot.time}`);
+      out.push({ session_name: name, date_start: iso(start), date_end: iso(start + min * 60000), meeting_key: `jolpica-${r.season}-${r.round}`,
+        meeting_name: r.raceName, location: r.Circuit.Location.locality, flag: null, session_key: null, circuit_key: null, year: +r.season });
+    });
+  });
+  return out.sort((a, b) => a.date_start.localeCompare(b.date_start));
+}
 
 async function f1Sessions() {
+  try { return await f1OpenF1Sessions(); } catch (e) { return f1JolpicaSessions(); }
+}
+
+async function f1OpenF1Sessions() {
   const year = now().getUTCFullYear();
   let out = [];
   for (const y of [year, year + 1]) {
-    const [meetings, sessions] = await Promise.all([getJSON(`${OPENF1}/meetings?year=${y}`), getJSON(`${OPENF1}/sessions?year=${y}`)]);
+    const [meetings, sessions] = await Promise.all([openf1(`meetings?year=${y}`), openf1(`sessions?year=${y}`)]);
     const byKey = {};
     meetings.forEach((m) => { byKey[m.meeting_key] = m; });
     sessions.forEach((s) => {
@@ -104,31 +167,36 @@ async function f1Sessions() {
 
 function f1Status(s) {
   if (s.is_cancelled) return "cancelled";
+  const e = espnFor(s);
+  if (e && e.state !== "scheduled") return e.state; // ESPN knows when results are in
   if (now() < parseDt(s.date_start)) return "scheduled";
   return now() < parseDt(s.date_end) ? "live" : "final";
 }
 
-async function f1Result(s, number) {
+async function f1Result(s, number, surname) {
   if (f1Status(s) !== "final") return null;
-  let rows;
-  try { rows = await getJSON(`${OPENF1}/session_result?session_key=${s.session_key}`); } catch (e) { return null; }
+  let rows = [];
+  try { if (s.session_key) rows = await openf1(`session_result?session_key=${s.session_key}`); } catch (e) { /* ESPN below */ }
   const row = rows.find((r) => r.driver_number === number);
-  if (!row) return null;
+  if (!row) {
+    const e = espnFor(s), i = e && surname ? e.order.indexOf(fold(surname)) : -1;
+    return i >= 0 ? result(`P${i + 1}`) : null;
+  }
   for (const f of ["dsq", "dns", "dnf"]) if (row[f]) return result(f.toUpperCase());
   return result(row.position ? `P${row.position}` : "NC");
 }
 
-async function f1Event(s, number, extra) {
+async function f1Event(s, number, extra, surname) {
   const name = s.session_name;
   return event(Object.assign({
     title: s.meeting_name, subtitle: SHORT_NAMES[name] || name, start: iso(parseDt(s.date_start)),
-    status: f1Status(s), result: await f1Result(s, number), location: s.location, image: s.flag,
+    status: f1Status(s), result: await f1Result(s, number, surname), location: s.location, image: s.flag,
     country: s.country_code,
   }, extra || {}));
 }
 
 async function f1Profile(number) {
-  const drivers = await getJSON(`${OPENF1}/drivers?session_key=latest`);
+  const drivers = await openf1("drivers?session_key=latest").catch(() => []); // optional; fetchAll keeps old values
   const d = drivers.find((x) => x.driver_number === number);
   if (!d) return { badge: String(number) };
   return { team: d.team_name, color: d.team_colour ? `#${d.team_colour}` : null, image: d.headshot_url, badge: String(number) };
@@ -235,8 +303,20 @@ async function f1Track(circuitKey, year) {
   return track;
 }
 
+// Driver's result in Jolpica's latest race (fallback when OpenF1 has none or is locked).
+async function f1JolpicaRaceResult(jolpicaId, raceName) {
+  try {
+    const race = (await getJSON(`${JOLPICA}/current/last/results.json`)).MRData.RaceTable.Races[0];
+    if (!race || race.raceName !== raceName) return null;
+    const r = race.Results.find((x) => x.Driver.driverId === jolpicaId);
+    if (!r) return null;
+    return result(/^\d+$/.test(r.positionText) ? `P${r.positionText}` : ({ R: "DNF", D: "DSQ", W: "DNS", N: "NC" }[r.positionText] || r.positionText));
+  } catch (e) { return null; }
+}
+
 async function f1Subject(subj) {
-  const number = subj.number;
+  const number = subj.number, surname = subj.name;
+  await f1Espn();
   const sessions = await f1Sessions();
   const upcoming = sessions.filter((s) => parseDt(s.date_end) > now());
   const done = sessions.filter((s) => parseDt(s.date_end) <= now());
@@ -247,20 +327,57 @@ async function f1Subject(subj) {
     const weekend = sessions.filter((s) => s.meeting_key === first.meeting_key);
     const listing = await Promise.all(weekend.map(async (s) => ({
       name: SHORT_NAMES[s.session_name] || s.session_name, start: iso(parseDt(s.date_start)),
-      status: f1Status(s), result: await f1Result(s, number),
+      status: f1Status(s), result: await f1Result(s, number, surname),
     })));
     let track = null;
-    try { track = await f1Track(first.circuit_key, first.year); } catch (e) { /* optional */ }
-    next = await f1Event(first, number, { sessions: listing, track });
+    try { if (first.circuit_key) track = await f1Track(first.circuit_key, first.year); } catch (e) { /* optional */ }
+    next = await f1Event(first, number, { sessions: listing, track }, surname);
   }
   // 'last' = latest Grand Prix race; weekend session results live in next.sessions.
   const races = done.filter((s) => s.session_name === "Race");
-  const last = races.length ? await f1Event(races[races.length - 1], number) : null;
+  const last = races.length ? await f1Event(races[races.length - 1], number, null, surname) : null;
+  if (last && !last.result) last.result = await f1JolpicaRaceResult(subj.jolpica_id, last.title);
   const [ranking, profile] = await Promise.all([f1Ranking(subj.jolpica_id), f1Profile(number)]);
   return { ranking, next, last, profile };
 }
 
 // Sport-level tables shared by all drivers: last race classification, driver standings.
+// Fallback team colours (OpenF1 team_colour, 2026) when OpenF1 is locked and not cached (= Python _team_colour).
+const TEAM_COLOURS = { alpine: "#00A1E8", astonmartin: "#229971", audi: "#F50537", cadillac: "#909090", ferrari: "#ED1131", haas: "#9C9FA2",
+  mclaren: "#F47600", mercedes: "#00D7B6", racingbulls: "#6C98FF", rb: "#6C98FF", redbull: "#4781D7", williams: "#1868DB" };
+function teamColour(team) {
+  let key = String(team || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  for (const suf of ["f1team", "racing"]) if (key.endsWith(suf) && key !== suf) key = key.slice(0, -suf.length);
+  return TEAM_COLOURS[key] || null;
+}
+
+const lapTime = (sec) => { const m = Math.floor(sec / 60), r = sec - m * 60; return m ? `${m}:${r.toFixed(3).padStart(6, "0")}` : r.toFixed(3); };
+const lastOf = (v) => { if (Array.isArray(v)) { const a = v.filter((x) => x != null); return a.length ? a[a.length - 1] : null; } return v; };
+
+// Timing-tower rows for one finished session (= Python _openf1_session_table): best lap, gap to P1,
+// and the compound of that best lap (laps + stints). Throws when OpenF1 has no result.
+async function f1SessionRows(s, followed) {
+  const key = s.session_key;
+  const res = (await openf1(`session_result?session_key=${key}`)).slice().sort((a, b) => (a.position || 99) - (b.position || 99));
+  if (!res.length) throw new Error("no result");
+  const drivers = {};
+  (await openf1(`drivers?session_key=${key}`)).forEach((d) => { drivers[d.driver_number] = d; });
+  let laps = [], stints = [];
+  try { [laps, stints] = await Promise.all([openf1(`laps?session_key=${key}`), openf1(`stints?session_key=${key}`)]); } catch (e) { /* tyres optional */ }
+  const tyre = (num, best) => {
+    const lap = laps.find((l) => l.driver_number === num && l.lap_duration && Math.abs(l.lap_duration - best) < 0.0015);
+    const st = lap && stints.find((x) => x.driver_number === num && x.lap_start <= lap.lap_number && lap.lap_number <= (x.lap_end || 999));
+    return st ? st.compound : null;
+  };
+  return res.map((r) => {
+    const d = drivers[r.driver_number] || {}, best = lastOf(r.duration), gap = lastOf(r.gap_to_leader);
+    const flag = ["dsq", "dns", "dnf"].find((f) => r[f]);
+    return { pos: r.position || "–", code: d.name_acronym || String(r.driver_number), name: d.full_name || null, team: d.team_name || null,
+      color: d.team_colour ? `#${d.team_colour}` : teamColour(d.team_name), value: best ? lapTime(best) : flag ? flag.toUpperCase() : "No time",
+      extra: gap ? `+${gap.toFixed(3)}` : "", tyre: best ? tyre(r.driver_number, best) : null, self: followed.has(r.driver_number) };
+  });
+}
+
 async function f1Sport(sportCfg) {
   if (LITE) {
     const nextRace = (await getJSON(`${JOLPICA}/current/next.json`)).MRData.RaceTable.Races[0];
@@ -268,14 +385,15 @@ async function f1Sport(sportCfg) {
   }
   const followed = new Set(sportCfg.subjects.map((s) => s.jolpica_id));
   const [drivers, raceData, standData, nextData] = await Promise.all([
-    getJSON(`${OPENF1}/drivers?session_key=latest`), getJSON(`${JOLPICA}/current/last/results.json`),
+    openf1("drivers?session_key=latest").catch(() => []), getJSON(`${JOLPICA}/current/last/results.json`),
     getJSON(`${JOLPICA}/current/driverStandings.json`), getJSON(`${JOLPICA}/current/next.json`),
   ]);
+  await f1Espn();
   const prev = await f1PrevPositions();
   const colours = {};
   drivers.forEach((d) => { if (d.team_colour) colours[d.name_acronym] = `#${d.team_colour}`; });
   const row = (pos, d, team, value, extra) => ({
-    pos, code: d.code, name: `${d.givenName} ${d.familyName}`, team, color: colours[d.code] || null,
+    pos, code: d.code, name: `${d.givenName} ${d.familyName}`, team, color: colours[d.code] || teamColour(team),
     value, extra, self: followed.has(d.driverId),
   });
   const race = raceData.MRData.RaceTable.Races[0];
@@ -289,9 +407,39 @@ async function f1Sport(sportCfg) {
   };
   const lists = standData.MRData.StandingsTable.StandingsLists;
   const nextRace = nextData.MRData.RaceTable.Races[0];
+  // Latest finished non-race session of the weekend (= Python _last_session_table): OpenF1 best laps,
+  // gaps and tyres when reachable, else ESPN's order (names only, code/team from Jolpica standings).
+  let lastSession = null;
+  try {
+    const sessions = await f1Sessions();
+    const up = sessions.filter((x) => parseDt(x.date_end) > now());
+    const meeting = (up[0] || sessions[sessions.length - 1] || {}).meeting_key;
+    const fin = sessions.filter((x) => x.meeting_key === meeting && x.session_name !== "Race" && f1Status(x) === "final");
+    const sx = fin[fin.length - 1];
+    if (sx && sx.session_key) {
+      const name = SHORT_NAMES[sx.session_name] || sx.session_name;
+      lastSession = { title: name, subtitle: `Best laps · ${sx.date_start.slice(0, 10)}`,
+        rows: await f1SessionRows(sx, new Set(sportCfg.subjects.map((x) => x.number))) };
+    }
+  } catch (e) { lastSession = null; }
+  const done = lastSession ? [] : Object.entries(espnWk || {}).filter(([, e]) => e.state === "final" && e.date);
+  if (done.length) {
+    const [name, e] = done.reduce((a, b) => (a[1].date > b[1].date ? a : b));
+    if (!(name === "Race" && race.date === e.date.slice(0, 10))) {
+      const byName = {};
+      (lists.length ? lists[0].DriverStandings : []).forEach((d) => { byName[fold(d.Driver.familyName)] = d; });
+      const mine = new Set(sportCfg.subjects.map((x) => fold(x.name)));
+      lastSession = { title: name, subtitle: `Latest session · ${e.date.slice(0, 10)}`, rows: e.order.map((sn, i) => {
+        const d = byName[sn], code = d ? d.Driver.code : sn.slice(0, 3).toUpperCase();
+        return { pos: i + 1, code, name: d ? `${d.Driver.givenName} ${d.Driver.familyName}` : sn, team: d ? d.Constructors[d.Constructors.length - 1].name : null,
+          color: colours[code] || teamColour(d && d.Constructors[d.Constructors.length - 1].name), value: "", extra: "", self: mine.has(sn) };
+      }) };
+    }
+  }
   return {
     next_round: nextRace ? +nextRace.round : null,
     tables: {
+      last_session: lastSession, // null -> clients fall back to last_race
       last_race: { title: race.raceName, subtitle: `Round ${race.round} · ${race.date}`,
         rows: race.Results.map((r) => row(+r.position, r.Driver, r.Constructor.name, gap(r), +r.points ? `+${r.points}` : "")) },
       standings: { title: "Driver standings", subtitle: lists.length ? `After round ${lists[0].round}` : null,
@@ -859,6 +1007,18 @@ async function sportExtras(sport, old, config) {
   }
 }
 
+// Keep display extras a degraded run couldn't provide (F1 during an OpenF1 lockout: team/colour,
+// circuit outline, flag) from the previous snapshot (= Python carry_missing).
+function carryMissing(subj, old) {
+  PROFILE_KEYS.forEach((k) => { if (subj[k] == null && old[k] != null) subj[k] = old[k]; });
+  ["next", "last"].forEach((key) => {
+    const n = subj[key], o = old[key];
+    if (n && o && n.title === o.title && String(n.start).slice(0, 10) === String(o.start).slice(0, 10)) {
+      ["track", "image", "location", "country"].forEach((f) => { if (n[f] == null && o[f] != null) n[f] = o[f]; });
+    }
+  });
+}
+
 async function fetchAll(config, previous) {
   const prev = {}, prevSports = {};
   ((previous || {}).sports || []).forEach((sp) => { prevSports[sp.id] = sp; sp.subjects.forEach((s) => { prev[s.id] = s; }); });
@@ -871,7 +1031,9 @@ async function fetchAll(config, previous) {
         const data = await withTimeout(PROVIDERS[sport.provider](cfg), config.timeoutMs || 25000);
         const profile = data.profile || {};
         delete data.profile;
-        return Object.assign(base, prof(profile), { updated_at: iso(now()), stale: false, error: null }, data);
+        const subj = Object.assign(base, prof(profile), { updated_at: iso(now()), stale: false, error: null }, data);
+        carryMissing(subj, prev[cfg.id] || {});
+        return subj;
       } catch (e) {
         const old = prev[cfg.id] || {};
         return Object.assign(base, prof(old), {
