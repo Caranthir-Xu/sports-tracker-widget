@@ -269,7 +269,8 @@ Event also has:
   from TimingData.SessionPart), status, remaining + clock_utc + running (session clock), laps,
   rows: [ { pos, number, code, team, color, value (best lap; races: last lap), best, extra (gap:
   races GapToLeader, else best − P1 best), tyre (current stint compound), laps, pit, out, self } ],
-  as_of }. Widget `liveF1` uses it only if as_of < 3 min old: `LiveTower` (open, red dot, clock via
+  flag (TrackStatus: 2 YELLOW, 4 SC, 5 RED FLAG, 6 VSC, 7 VSC ENDING; null = green), as_of }.
+  The flag is a blinking pill in the tower header (yellow / red). Widget `liveF1` uses it only if as_of < 3 min old: `LiveTower` (open, red dot, clock via
   LiveClock, PIT tag, out rows dimmed) above the session tables, and the driver's stat shows LIVE P#
   + best lap. iOS: `f1Live()` in Sports Data.js (full runs = detail page only; widgets refresh too
   rarely) builds the same `live`; the detail page shows `f1LiveHTML` + LIVE stats. It doesn't

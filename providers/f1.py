@@ -547,7 +547,10 @@ def fetch_sport(sport_cfg):
 # long polling (negotiate, handshake, subscribe, read) instead of holding a socket open.
 
 LIVE_FEED = "https://livetiming.formula1.com/signalrcore"
-LIVE_TOPICS = ["SessionInfo", "SessionStatus", "ExtrapolatedClock", "TimingData", "TimingAppData", "DriverList", "LapCount"]
+LIVE_TOPICS = ["SessionInfo", "SessionStatus", "ExtrapolatedClock", "TimingData", "TimingAppData", "DriverList",
+               "LapCount", "TrackStatus"]
+# TrackStatus codes -> flag shown on the live tower (1 = green: nothing).
+TRACK_FLAGS = {"2": "YELLOW", "4": "SC", "5": "RED FLAG", "6": "VSC", "7": "VSC ENDING"}
 LIVE_BEFORE, LIVE_AFTER = timedelta(minutes=5), timedelta(minutes=15)
 
 
@@ -641,5 +644,6 @@ def refresh_live_sport(sport_cfg, entry):
         "remaining": clock.get("Remaining"), "clock_utc": clock.get("Utc"),
         "running": bool(clock.get("Extrapolating")),  # clock counts down from clock_utc
         "laps": (res.get("LapCount") or {}).get("CurrentLap"), "total_laps": (res.get("LapCount") or {}).get("TotalLaps"),
+        "flag": TRACK_FLAGS.get(str((res.get("TrackStatus") or {}).get("Status"))),  # SC / VSC / RED FLAG...
         "rows": rows, "as_of": iso(now_utc()),
     }}

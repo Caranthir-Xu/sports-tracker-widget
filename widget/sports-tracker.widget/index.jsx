@@ -148,6 +148,10 @@ export const className = `
   .f1t-r .v { text-align: right; white-space: nowrap; font-family: "SF Mono", Menlo, monospace; font-size: 9.5px; }
   .f1t-r .cg { width: 22px; text-align: right; }
   .f1t.live { display: block; }
+  .f1t.live .flag { margin-left: 6px; padding: 1px 6px; border-radius: 3px; font-size: 9px; font-style: normal; letter-spacing: 0.04em; vertical-align: 1px; animation: f1flag 1.2s ease-in-out infinite; }
+  .f1t.live .flag.yel { background: #ffd400; color: #111; }
+  .f1t.live .flag.red { background: #ff2a1f; color: #fff; }
+  @keyframes f1flag { 50% { opacity: 0.55; } }
   .f1t.live .f1t-h b .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #ff453a; box-shadow: 0 0 6px #ff453a; vertical-align: 2px; }
   .f1t-r.out { opacity: 0.4; }
   .f1t-r .pit { font-size: 8px; font-weight: 800; padding: 0 4px; border-radius: 3px; background: rgba(255, 255, 255, 0.85); color: #111; }
@@ -733,7 +737,8 @@ function LiveTower({ live }) {
   return (
     <div className="f1t open live">
       <div className="f1t-h">
-        <b className="f1x"><span className="dot" /> {live.session}{live.part ? ` · ${live.part}` : ""}</b>
+        <b className="f1x"><span className="dot" /> {live.session}{live.part ? ` · ${live.part}` : ""}
+          {live.flag && <span className={`flag ${live.flag === "RED FLAG" ? "red" : "yel"}`}>{live.flag}</span>}</b>
         <span>{racing && live.laps ? `Lap ${live.laps}${live.total_laps ? "/" + live.total_laps : ""}` : live.remaining
           ? <LiveClock lv={{ seconds: hms(live.remaining), as_of: live.clock_utc, running: live.running }} /> : live.status}</span>
       </div>

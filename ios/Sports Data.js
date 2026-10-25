@@ -383,7 +383,8 @@ async function f1SessionRows(s, followed) {
 // long polling. The AWS load balancer is sticky: send its AWSALB cookies back on every request,
 // or later calls land on another server ("No Connection with that ID").
 const LIVE_FEED = "https://livetiming.formula1.com/signalrcore";
-const LIVE_TOPICS = ["SessionInfo", "SessionStatus", "ExtrapolatedClock", "TimingData", "TimingAppData", "DriverList", "LapCount"];
+const LIVE_TOPICS = ["SessionInfo", "SessionStatus", "ExtrapolatedClock", "TimingData", "TimingAppData", "DriverList", "LapCount", "TrackStatus"];
+const TRACK_FLAGS = { 2: "YELLOW", 4: "SC", 5: "RED FLAG", 6: "VSC", 7: "VSC ENDING" }; // TrackStatus codes; 1 = green
 
 async function f1LiveSnapshot() {
   let cookie = "";
@@ -449,7 +450,7 @@ async function f1Live(sportCfg) {
   const clock = res.ExtrapolatedClock || {}, laps = res.LapCount || {};
   return { session: SHORT_NAMES[info.Name] || info.Name, part: part ? `Q${part}` : null, status: (res.SessionStatus || {}).Status || null,
     remaining: clock.Remaining || null, clock_utc: clock.Utc || null, running: !!clock.Extrapolating,
-    laps: laps.CurrentLap || null, total_laps: laps.TotalLaps || null, rows, as_of: iso(now()) };
+    laps: laps.CurrentLap || null, total_laps: laps.TotalLaps || null, flag: TRACK_FLAGS[(res.TrackStatus || {}).Status] || null, rows, as_of: iso(now()) };
 }
 
 async function f1Sport(sportCfg) {
