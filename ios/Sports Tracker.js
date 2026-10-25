@@ -266,6 +266,16 @@ function plateImage(number, color, h) {
   return ctx.getImage();
 }
 
+// Official team emblem from Formula 1's image CDN (= desktop teamLogo).
+const TEAM_SLUGS = [["ferrari", "ferrari"], ["red bull", "redbullracing"], ["racing bulls", "racingbulls"], ["rb f1", "racingbulls"],
+  ["mercedes", "mercedes"], ["mclaren", "mclaren"], ["aston", "astonmartin"], ["alpine", "alpine"], ["williams", "williams"],
+  ["haas", "haasf1team"], ["audi", "audi"], ["sauber", "audi"], ["cadillac", "cadillac"]];
+function teamLogo(team, h) {
+  const t = String(team || "").toLowerCase();
+  const hit = TEAM_SLUGS.find(([k]) => t.includes(k) && !(k === "red bull" && t.includes("racing bulls")));
+  return hit ? `https://media.formula1.com/image/upload/c_fit,h_${h || 160}/f_png/q_auto/v1740000000/common/f1/2026/${hit[1]}/2026${hit[1]}logo.webp` : null;
+}
+
 // Five start lights: one more lit per day as the session nears; all off once live.
 function lightsImage(ev) {
   const days = Math.floor((Date.parse(ev.start) - Date.now()) / DAY);
@@ -374,6 +384,8 @@ async function f1Block(parent, sport, opts) {
     r.backgroundColor = isHot(s.last) ? new Color("#ffb340", 0.18) : new Color(s.color || "#888888", 0.3);
     addImage(r, plateImage(s.badge, s.color, opts.compact ? 16 : 18));
     txt(r, s.short, opts.compact ? 14 : 15, C.text, "race");
+    const lg = teamLogo(s.team, 48);
+    if (lg) { const im = await img(r, lg, opts.compact ? 14 : 16); if (im) im.imageOpacity = 0.55; }
     r.addSpacer();
     const lt = latestF1(s);
     txt(r, lt.value, opts.compact ? 14 : 15, C.text, "race");
@@ -705,7 +717,8 @@ function f1LiveHTML(lv) {
 
 function f1HTML(sport) {
   // Live timing only while fresh (the detail page fetches it on open).
-  const live = sport.live && sport.live.rows && sport.live.rows.length && Date.now() - Date.parse(sport.live.as_of) < 3 * 60000 ? sport.live : null;
+  const live = sport.live && !["Finished", "Finalised", "Ends"].includes(sport.live.status) && sport.live.rows && sport.live.rows.length
+    && Date.now() - Date.parse(sport.live.as_of) < 3 * 60000 ? sport.live : null;
   const ev = (sport.subjects.find((s) => s.next) || {}).next;
   const [c1, c2] = f1Colors(sport);
   const carbon = "repeating-linear-gradient(45deg,rgba(255,255,255,.025) 0 2px,transparent 2px 4px),repeating-linear-gradient(-45deg,rgba(0,0,0,.09) 0 2px,transparent 2px 4px)";
@@ -726,7 +739,7 @@ function f1HTML(sport) {
   for (const s of sport.subjects) {
     const l = s.last, r = s.ranking;
     h += `<div class="driver ${isHot(l) ? "hot" : ""}" style="background:linear-gradient(100deg,${hex2rgba(s.color, .4)},${hex2rgba(s.color, .05)} 70%)">
-      <div class="plate" style="background:${s.color || "#888"}"><span class="f1x">${esc(s.badge)}</span></div>
+      ${teamLogo(s.team) ? `<img class="tlogo" src="${teamLogo(s.team)}">` : ""}<div class="plate" style="background:${s.color || "#888"}"><span class="f1x">${esc(s.badge)}</span></div>
       <div class="who"><b class="f1x">${esc(s.short)}</b><div class="dim">${esc(s.team || "")}</div></div>
       ${(() => { // live position overrides LATEST while a session is on
         const me = live && live.rows.find((x) => x.code === s.short);
@@ -960,8 +973,8 @@ function detailHTML(data, focus) {
   .strip b{display:block;font-size:12px}.strip span{font-size:10px;color:rgba(255,255,255,.6)}.strip em{display:block;font-size:9px;font-style:normal;color:rgba(255,255,255,.75)}
   .strip .done{opacity:.55}.strip .next{background:rgba(255,255,255,.18)}
   .driver{display:flex;align-items:center;gap:10px;padding:7px 8px 7px 6px;border-radius:10px;margin-top:6px}
-  .plate{width:40px;height:32px;display:flex;align-items:center;justify-content:center;transform:skewX(-12deg);border-radius:3px;box-shadow:inset 0 -3px 0 rgba(0,0,0,.25)}.plate span{transform:skewX(12deg);font-size:22px}
-  .who{flex:1}.driver .who b{font-size:21px}.stat{width:68px;text-align:right}.stat i{display:block;font-size:8px;font-style:normal;color:rgba(255,255,255,.45)}.stat b{font-size:24px}.stat span{display:block;font-size:10px;color:rgba(255,255,255,.5)}
+  .plate{width:40px;height:32px;display:flex;align-items:center;justify-content:center;transform:skewX(-12deg);border-radius:3px;box-shadow:inset 0 -3px 0 rgba(0,0,0,.25)}.driver{position:relative;overflow:hidden}.driver>:not(.tlogo){position:relative;z-index:1}.driver .tlogo{position:absolute;left:46%;top:50%;height:150%;transform:translate(-50%,-50%) rotate(-8deg);opacity:.2;pointer-events:none}.plate span{transform:skewX(12deg);font-size:22px}
+  .who{flex:1}.driver .who b{font-size:21px}.stat{width:68px;text-align:right}.stat i{display:block;font-size:8px;font-style:normal;color:rgba(255,255,255,.45)}.stat b{display:block;font-size:24px}.stat span{display:block;font-size:10px;color:rgba(255,255,255,.5)}
   .stat.tap i{border-bottom:1px dotted rgba(255,255,255,.4);display:inline-block}
   .f1t.lvt{display:block}.lvt .flag{margin-left:7px;padding:1px 6px;border-radius:3px;font-size:10px;font-style:normal;vertical-align:1px;animation:f1flag 1.2s ease-in-out infinite}.lvt .flag.yel{background:#ffd400;color:#111}.lvt .flag.red{background:#ff2a1f;color:#fff}@keyframes f1flag{50%{opacity:.55}}.lvt .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#ff453a;box-shadow:0 0 6px #ff453a;vertical-align:2px;text-decoration:none}.f1t-r.out{opacity:.4}.f1t-r .pit{font-style:normal;font-size:9px;font-weight:800;padding:0 4px;border-radius:3px;background:rgba(255,255,255,.85);color:#111}.stat i.lv{color:#ff453a}
   .f1t-r .cg{width:24px;font-size:9px}.f1t-r .tyre{flex:none;width:12px;text-align:center;font-size:12px;font-weight:900;font-family:-apple-system,sans-serif}.stat b .up,.stat b .down{font-family:-apple-system,sans-serif;font-size:10px;font-style:normal;vertical-align:4px;margin-left:2px}

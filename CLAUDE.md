@@ -254,6 +254,11 @@ Event also has:
   compound of that best lap from `laps` + `stints`: SOFT/MEDIUM/HARD/INTERMEDIATE/WET), else ESPN's
   order (code/team from Jolpica standings, no times/tyres). Tables render the tyre as a Pirelli-
   coloured letter (`Tyre` / iOS `tyreHTML`) when any row has one.
+- Driver rows show the team's emblem faintly behind the row (desktop + iOS detail: `.tlogo`, ~20%
+  opacity, rotated) and as a small semi-transparent icon after the code in iOS widgets
+  (`imageOpacity`; widgets can't place a non-stretched background image). `teamLogo(team)` maps the
+  team name to Formula 1's image CDN (`media.formula1.com/.../common/f1/2026/<slug>/2026<slug>logo.webp`,
+  iOS adds `f_png`), loaded at runtime — logo files are not committed. Plates stay plain team colour.
 - F1 driver row: car number (on plate), code + team, newest 3 session results of the current
   weekend (Q/SPR/SQ/FP), then LATEST (newest finished session this weekend, else the last race;
   click → `tables.last_session || tables.last_race`) and STANDINGS stat columns (▲/▼ since the previous round;
@@ -270,7 +275,26 @@ Event also has:
   rows: [ { pos, number, code, team, color, value (best lap; races: last lap), best, extra (gap:
   races GapToLeader, else best − P1 best), tyre (current stint compound), laps, pit, out, self } ],
   flag (TrackStatus: 2 YELLOW, 4 SC, 5 RED FLAG, 6 VSC, 7 VSC ENDING; null = green), as_of }.
-  The flag is a blinking pill in the tower header (yellow / red). Widget `liveF1` uses it only if as_of < 3 min old: `LiveTower` (open, red dot, clock via
+  The flag is a blinking pill in the tower header (yellow / red).
+  After a session: a session counts as finished once ESPN / the clock says so (during a lockout
+  the end times are estimates); when the feed says Finished/Finalised/Ends while a subject still
+  shows it live, `refresh_live_sport` adds `refresh_subjects` and the live job runs
+  `refresh_sport_now` (fetch_subject for each subject + fetch_sport) right away. A finished session
+  clears `live` (clients also ignore a live block whose status is Finished/Finalised/Ends), so the
+  drivers show LATEST again. `next_round` comes from the calendar (`current.json`, matched by the
+  next event's meeting name): Jolpica's next.json still names the old round for hours after a race. A finished race
+  makes `last_session` the race classification until Jolpica publishes it (hours later), then the
+  Jolpica last_race table (with times) takes over. `last_session` sources, in order: the live-timing
+  feed (`_feed_session_rows` / iOS `f1FeedRows`: the feed keeps the last session's final state until
+  the next session starts; races = winner "56 Laps", gaps "+13.078", "+1 Lap", "DNF" (Retired, or
+  Stopped under 90% distance), extra "+25" points, final tyre; other sessions = best laps), then
+  OpenF1 (non-race, best laps + tyres), then ESPN's bare order. `_live_snapshot` is cached per run.
+- F1 provisional standings: while Jolpica lags a finished race/sprint, `_provisional` / iOS
+  `f1Provisional` = Jolpica totals + that session's points (25-18-15-12-10-8-6-4-2-1; sprint 8…1),
+  re-sorted (points, wins); `change` = Jolpica position − provisional position. Used by the ranking
+  (`provisional: true`) and the standings table (subtitle "Provisional · incl. race <date>").
+  iOS shares the in-flight promise (`f1LatestSession`, `f1Provisional`) so concurrent callers in one
+  run don't get an empty placeholder. Widget `liveF1` uses it only if as_of < 3 min old: `LiveTower` (open, red dot, clock via
   LiveClock, PIT tag, out rows dimmed) above the session tables, and the driver's stat shows LIVE P#
   + best lap. iOS: `f1Live()` in Sports Data.js (full runs = detail page only; widgets refresh too
   rarely) builds the same `live`; the detail page shows `f1LiveHTML` + LIVE stats. It doesn't

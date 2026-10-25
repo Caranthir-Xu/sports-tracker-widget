@@ -183,6 +183,31 @@ def main():
     print(f"{iso(now_utc())} wrote {out_path} ({failures} failed)")
 
 
+def refresh_sport_now(provider, sport, entry, current):
+    """Full fetch of one sport's subjects (+ sport tables) from the live job, keeping the old data
+    for any subject that fails (same rules as main())."""
+    for cfg in sport["subjects"]:
+        subj = current.get(cfg["id"])
+        if subj is None:
+            continue
+        try:
+            data = provider.fetch_subject(cfg)
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
+            continue
+        old = dict(subj)
+        profile = data.pop("profile", None) or {}
+        subj.update(data)
+        subj.update({k: v for k, v in profile_fields(profile, cfg).items() if v is not None})
+        subj.update(updated_at=iso(now_utc()), stale=False, error=None)
+        carry_missing(subj, old)
+    if hasattr(provider, "fetch_sport"):
+        try:
+            entry.update(provider.fetch_sport(sport), tables_stale=False)
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
+
+
 def live_main():
     config = yaml.safe_load((ROOT / "config.yaml").read_text())
     out_path = ROOT / config.get("output", "data.json")
@@ -206,8 +231,11 @@ def live_main():
                 traceback.print_exc(file=sys.stderr)
                 upd = None
             if upd is not None:
+                refresh = upd.pop("refresh_subjects", False)
                 entry.update(upd)
                 changed.append(sport["id"])
+                if refresh:  # e.g. F1 session just finished: roll subjects + tables over now
+                    refresh_sport_now(provider, sport, entry, current)
         if not hasattr(provider, "refresh_live"):
             continue
         for cfg in sport["subjects"]:

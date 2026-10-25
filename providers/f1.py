@@ -311,6 +311,38 @@ def _prev_positions():
         return {}  # change is optional
 
 
+@lru_cache(maxsize=None)
+def _provisional():
+    """Standings after a race/sprint Jolpica hasn't published yet: Jolpica's totals + that
+    session's points from the live-timing feed. {driverId: {pos, points, wins, change, base}} plus
+    "_label", or None when Jolpica is current (or nothing to add)."""
+    try:
+        latest = _last_session_table(set(), ())
+    except Exception:
+        return None
+    if not latest or latest["name"] not in ("Race", "Sprint") or not latest.get("rows"):
+        return None
+    if not latest["rows"][0].get("points") and latest["rows"][0].get("points") != 0:
+        return None  # ESPN order only: no points to add
+    race = get_json(f"{JOLPICA}/current/last/results.json")["MRData"]["RaceTable"]["Races"][0]
+    if latest["name"] == "Race" and race.get("date") == latest["date"][:10]:
+        return None  # Jolpica already has this race
+    lists = get_json(f"{JOLPICA}/current/driverStandings.json")["MRData"]["StandingsTable"]["StandingsLists"]
+    rows = lists[0]["DriverStandings"] if lists else []
+    by_code = {r["code"]: r for r in latest["rows"]}
+    out = {}
+    for d in rows:
+        r = by_code.get(d["Driver"].get("code")) or {}
+        out[d["Driver"]["driverId"]] = {"points": float(d["points"]) + (r.get("points") or 0),
+                                        "wins": int(d["wins"]) + (1 if latest["name"] == "Race" and r.get("pos") == 1 else 0),
+                                        "base": int(d["position"])}
+    order = sorted(out, key=lambda k: (-out[k]["points"], -out[k]["wins"], out[k]["base"]))
+    for i, k in enumerate(order, 1):
+        out[k]["pos"], out[k]["change"] = i, out[k]["base"] - i
+    out["_label"] = f"Provisional · incl. {latest['name'].lower()} {latest['date'][:10]}"
+    return out
+
+
 def _change(driver_id, pos):
     """Places moved since the previous round (+ = up); None when unknown."""
     old = _prev_positions().get(driver_id)
@@ -321,6 +353,14 @@ def _ranking(jolpica_id):
     table = get_json(f"{JOLPICA}/current/driverStandings.json")
     lists = table["MRData"]["StandingsTable"]["StandingsLists"]
     rows = lists[0]["DriverStandings"] if lists else []
+    prov = _provisional()
+    if prov and jolpica_id in prov:  # Jolpica hasn't published the latest race yet
+        me = prov[jolpica_id]
+        lead = max(v["points"] for k, v in prov.items() if k != "_label")
+        return {"label": "Drivers", "position": me["pos"], "points": me["points"],
+                "detail": f"{me['wins']} win{'s' if me['wins'] != 1 else ''}",
+                "note": "Championship leader" if me["pos"] == 1 else f"{lead - me['points']:.0f} pts behind leader",
+                "change": me["change"], "provisional": True}
     for d in rows:
         if d["Driver"]["driverId"] == jolpica_id:
             wins = int(d["wins"])
@@ -341,8 +381,10 @@ def fetch_subject(subj):
     sessions = [s for s in _sessions() if not s.get("is_cancelled")]
     now = now_utc()
 
-    upcoming = [s for s in sessions if parse_dt(s["date_end"]) > now]
-    done = [s for s in sessions if parse_dt(s["date_end"]) <= now]
+    # Finished = ESPN/clock says final; scheduled end times are estimates during an OpenF1 lockout.
+    fin = {id(s) for s in sessions if parse_dt(s["date_end"]) <= now or _status(s) == "final"}
+    upcoming = [s for s in sessions if id(s) not in fin]
+    done = [s for s in sessions if id(s) in fin]
 
     nxt = None
     if upcoming:
@@ -444,6 +486,52 @@ def _openf1_session_table(s, followed_numbers):
     return rows
 
 
+RACE_POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1]
+SPRINT_POINTS = [8, 7, 6, 5, 4, 3, 2, 1]
+
+
+def _feed_session_rows(name, meeting_name, followed_numbers):
+    """Final classification of a session from the live-timing feed, which keeps the last session's
+    state until the next one starts (works while OpenF1 is locked and before Jolpica publishes).
+    Races/sprints: gap to the winner ("+13.078", "+1 Lap", "DNF") + points; otherwise best laps."""
+    res = _live_snapshot()
+    info = res.get("SessionInfo") or {}
+    if SHORT_NAMES.get(info.get("Name"), info.get("Name")) != name or \
+            (meeting_name and (info.get("Meeting") or {}).get("Name") != meeting_name):
+        return None  # the feed has moved on to another session
+    if name not in ("Race", "Sprint"):
+        rows, _ = _live_rows(res, followed_numbers)
+        return [dict(r, value=r["best"] or "No time") for r in rows]
+    lines, drivers = (res.get("TimingData") or {}).get("Lines") or {}, res.get("DriverList") or {}
+    app = (res.get("TimingAppData") or {}).get("Lines") or {}
+    total = ((res.get("LapCount") or {}).get("TotalLaps")) or max((l.get("NumberOfLaps") or 0) for l in lines.values())
+    pts = RACE_POINTS if name == "Race" else SPRINT_POINTS
+    rows = []
+    for n in sorted(lines, key=lambda n: int(lines[n].get("Position") or 99)):
+        l, d = lines[n], drivers.get(n) or {}
+        pos, laps = int(l.get("Position") or 0), l.get("NumberOfLaps") or 0
+        dnf = l.get("Retired") or (l.get("Stopped") and laps < 0.9 * total)  # < 90% distance: not classified
+        gap = l.get("GapToLeader") or ""
+        if pos == 1:
+            value = f"{laps} Laps"
+        elif dnf:
+            value = "DNF"
+        elif gap.endswith("L"):
+            down = int(gap[:-1].lstrip("+") or 0)
+            value = f"+{down} Lap{'s' if down > 1 else ''}"
+        else:
+            value = gap
+        stints = (app.get(n) or {}).get("Stints") or []
+        got = pts[pos - 1] if not dnf and 0 < pos <= len(pts) else 0
+        rows.append({"pos": pos, "number": n, "code": d.get("Tla") or n, "name": d.get("FullName"),
+                     "team": d.get("TeamName"),
+                     "color": f"#{d['TeamColour']}" if d.get("TeamColour") else _team_colour(d.get("TeamName")),
+                     "value": value, "extra": f"+{got}" if got else "", "points": got, "dnf": bool(dnf),
+                     "tyre": stints[-1].get("Compound") if stints else None,
+                     "self": int(n) in followed_numbers})
+    return rows
+
+
 def _last_session_table(followed_surnames, followed_numbers=()):
     """Classification of the latest finished session of the current weekend (practice,
     qualifying, sprint...), or None. OpenF1 (times + tyres) when reachable, else ESPN's order
@@ -453,11 +541,13 @@ def _last_session_table(followed_surnames, followed_numbers=()):
         sessions = _sessions()
     except Exception:
         sessions = []
-    upcoming = [x for x in sessions if parse_dt(x["date_end"]) > now]
-    meeting = (upcoming[0] if upcoming else sessions[-1] if sessions else {}).get("meeting_key")
-    finished = [x for x in sessions if x.get("meeting_key") == meeting and x["session_name"] != "Race"
-                and _status(x) == "final"]
-    if finished and finished[-1].get("session_key"):
+    # The weekend of the latest finished session (a finished race must not be skipped).
+    finished = [x for x in sessions if parse_dt(x["date_start"]) <= now
+                and (_status(x) == "final" or parse_dt(x["date_end"]) <= now)]
+    meeting = finished[-1].get("meeting_key") if finished else None
+    finished = [x for x in finished if x.get("meeting_key") == meeting]
+    # Races: Jolpica's last_race (with times) once published, ESPN's order until then.
+    if finished and finished[-1]["session_name"] != "Race" and finished[-1].get("session_key"):
         s = finished[-1]
         name = SHORT_NAMES.get(s["session_name"], s["session_name"])
         try:
@@ -466,6 +556,17 @@ def _last_session_table(followed_surnames, followed_numbers=()):
                     "table": {"title": name, "subtitle": f"Best laps · {s['date_start'][:10]}", "rows": rows}}
         except Exception:
             pass  # locked / not published yet: ESPN below
+    if finished:
+        s_last = finished[-1]
+        name = SHORT_NAMES.get(s_last["session_name"], s_last["session_name"])
+        try:
+            rows = _feed_session_rows(name, s_last.get("meeting_name"), set(followed_numbers))
+        except Exception:
+            rows = None
+        if rows:
+            sub = "Race · F1 live timing" if name in ("Race", "Sprint") else "Best laps · F1 live timing"
+            return {"name": name, "date": s_last["date_start"], "rows": rows,
+                    "table": {"title": name, "subtitle": f"{sub} · {s_last['date_start'][:10]}", "rows": rows}}
     done = [(n, e) for n, e in _espn_weekend().items() if e["state"] == "final" and e.get("date")]
     if not done:
         return None
@@ -518,10 +619,19 @@ def fetch_sport(sport_cfg):
                for r in race["Results"]]
 
     lists = get_json(f"{JOLPICA}/current/driverStandings.json")["MRData"]["StandingsTable"]["StandingsLists"]
-    standings = [dict(row(int(d["position"]), d["Driver"], d["Constructors"][-1]["name"],
-                          f"{float(d['points']):g}", f"{d['wins']}W" if int(d["wins"]) else ""),
-                      change=_change(d["Driver"]["driverId"], int(d["position"])))
-                 for d in (lists[0]["DriverStandings"] if lists else [])]
+    prov = _provisional()
+    if prov:  # latest race not in Jolpica yet: provisional totals and moves
+        ds = lists[0]["DriverStandings"] if lists else []
+        standings = sorted((dict(row(prov[d["Driver"]["driverId"]]["pos"], d["Driver"], d["Constructors"][-1]["name"],
+                                     f"{prov[d['Driver']['driverId']]['points']:g}",
+                                     f"{prov[d['Driver']['driverId']]['wins']}W" if prov[d["Driver"]["driverId"]]["wins"] else ""),
+                                 change=prov[d["Driver"]["driverId"]]["change"])
+                            for d in ds if d["Driver"]["driverId"] in prov), key=lambda r: r["pos"])
+    else:
+        standings = [dict(row(int(d["position"]), d["Driver"], d["Constructors"][-1]["name"],
+                              f"{float(d['points']):g}", f"{d['wins']}W" if int(d["wins"]) else ""),
+                          change=_change(d["Driver"]["driverId"], int(d["position"])))
+                     for d in (lists[0]["DriverStandings"] if lists else [])]
 
     nxt = get_json(f"{JOLPICA}/current/next.json")["MRData"]["RaceTable"]["Races"]
     # Latest finished session this weekend; a race uses Jolpica's classification (with times)
@@ -531,12 +641,22 @@ def fetch_sport(sport_cfg):
     last_session = None
     if latest and not (latest["name"] == "Race" and race.get("date") == latest["date"][:10]):
         last_session = latest["table"]
-    return {"next_round": int(nxt[0]["round"]) if nxt else None, "tables": {
+    next_round = int(nxt[0]["round"]) if nxt else None
+    # Jolpica's next.json lags hours after a race; take the round of our next event from the calendar.
+    try:
+        now = now_utc()
+        up = [x for x in _sessions() if parse_dt(x["date_end"]) > now and _status(x) != "final"]
+        if up:
+            cal = get_json(f"{JOLPICA}/current.json")["MRData"]["RaceTable"]["Races"]
+            next_round = next((int(r["round"]) for r in cal if r["raceName"] == up[0]["meeting_name"]), next_round)
+    except Exception:
+        pass
+    return {"next_round": next_round, "tables": {
         "last_session": last_session,  # None -> clients fall back to last_race
         "last_race": {"title": race["raceName"], "subtitle": f"Round {race['round']} · {race['date']}",
                       "rows": results},
         "standings": {"title": "Driver standings",
-                      "subtitle": f"After round {lists[0]['round']}" if lists else None,
+                      "subtitle": prov["_label"] if prov else f"After round {lists[0]['round']}" if lists else None,
                       "rows": standings},
     }}
 
@@ -554,6 +674,7 @@ TRACK_FLAGS = {"2": "YELLOW", "4": "SC", "5": "RED FLAG", "6": "VSC", "7": "VSC 
 LIVE_BEFORE, LIVE_AFTER = timedelta(minutes=5), timedelta(minutes=15)
 
 
+@lru_cache(maxsize=None)  # one snapshot per process (a full run asks for it several times)
 def _live_snapshot():
     from curl_cffi import requests  # same dependency as the badminton provider
     s = requests.Session(impersonate="chrome")
@@ -633,9 +754,15 @@ def refresh_live_sport(sport_cfg, entry):
     if not s:
         return {"live": None} if entry.get("live") else None
     res = _live_snapshot()
+    over = (res.get("SessionStatus") or {}).get("Status") in ("Finished", "Finalised", "Ends")
+    # Session over but the subjects still say live: refresh them now (results from ESPN), not at the
+    # next 30-min run. Self-limiting: once refreshed, no subject shows a live session any more.
+    stale = over and any((x.get("next") or {}).get("status") == "live" for x in entry.get("subjects") or [])
     info, status = res.get("SessionInfo") or {}, (res.get("SessionStatus") or {}).get("Status")
     if not info or not (res.get("TimingData") or {}).get("Lines"):
         return None
+    if over:  # finished: drop the tower so LATEST / the result tables show again
+        return dict({"live": None} if entry.get("live") else {}, **({"refresh_subjects": True} if stale else {})) or None
     rows, part = _live_rows(res, {s_["number"] for s_ in sport_cfg["subjects"]})
     name = SHORT_NAMES.get(info.get("Name"), info.get("Name"))
     clock = res.get("ExtrapolatedClock") or {}

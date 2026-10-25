@@ -223,7 +223,13 @@ async function f1PrevPositions() {
 // Places moved since the previous round (+ = up); null when unknown.
 const f1Change = (prev, id, pos) => (prev[id] ? prev[id] - pos : null);
 
-async function f1Ranking(jolpicaId) {
+async function f1Ranking(jolpicaId, followed) {
+  const prov = await f1Provisional(await f1LatestSession(followed || new Set())).catch(() => null);
+  if (prov && prov[jolpicaId]) { // Jolpica hasn't published the latest race yet
+    const me = prov[jolpicaId], lead = Math.max(...Object.keys(prov).filter((k) => k !== "_label").map((k) => prov[k].points));
+    return { label: "Drivers", position: me.pos, points: me.points, detail: `${me.wins} win${me.wins !== 1 ? "s" : ""}`,
+      note: me.pos === 1 ? "Championship leader" : `${Math.round(lead - me.points)} pts behind leader`, change: me.change, provisional: true };
+  }
   const t = await getJSON(`${JOLPICA}/current/driverStandings.json`);
   const lists = t.MRData.StandingsTable.StandingsLists;
   const rows = lists.length ? lists[0].DriverStandings : [];
@@ -318,8 +324,10 @@ async function f1Subject(subj) {
   const number = subj.number, surname = subj.name;
   await f1Espn();
   const sessions = await f1Sessions();
-  const upcoming = sessions.filter((s) => parseDt(s.date_end) > now());
-  const done = sessions.filter((s) => parseDt(s.date_end) <= now());
+  // Finished = ESPN/clock says final; scheduled end times are estimates during an OpenF1 lockout.
+  const isDone = (s) => parseDt(s.date_end) <= now() || f1Status(s) === "final";
+  const upcoming = sessions.filter((s) => !isDone(s));
+  const done = sessions.filter(isDone);
 
   let next = null;
   if (upcoming.length) {
@@ -386,7 +394,9 @@ const LIVE_FEED = "https://livetiming.formula1.com/signalrcore";
 const LIVE_TOPICS = ["SessionInfo", "SessionStatus", "ExtrapolatedClock", "TimingData", "TimingAppData", "DriverList", "LapCount", "TrackStatus"];
 const TRACK_FLAGS = { 2: "YELLOW", 4: "SC", 5: "RED FLAG", 6: "VSC", 7: "VSC ENDING" }; // TrackStatus codes; 1 = green
 
-async function f1LiveSnapshot() {
+let liveSnap = null; // one snapshot per run
+function f1LiveSnapshot() { return liveSnap || (liveSnap = f1LiveSnapshotFresh()); }
+async function f1LiveSnapshotFresh() {
   let cookie = "";
   const call = async (url, method, body) => {
     const r = new Request(url);
@@ -438,6 +448,73 @@ function f1LiveRows(res, followed) {
   return [rows, part];
 }
 
+const RACE_POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1], SPRINT_POINTS = [8, 7, 6, 5, 4, 3, 2, 1];
+
+// Final classification from the live-timing feed (= Python _feed_session_rows): it keeps the last
+// session's state until the next one starts. Races/sprints: gap + points; otherwise best laps.
+async function f1FeedRows(name, meetingName, followed) {
+  const res = await f1LiveSnapshot(), info = res.SessionInfo || {};
+  if ((SHORT_NAMES[info.Name] || info.Name) !== name || (meetingName && (info.Meeting || {}).Name !== meetingName)) return null;
+  if (!["Race", "Sprint"].includes(name)) return f1LiveRows(res, followed)[0].map((r) => Object.assign(r, { value: r.best || "No time" }));
+  const lines = (res.TimingData || {}).Lines || {}, drivers = res.DriverList || {}, app = (res.TimingAppData || {}).Lines || {};
+  const total = (res.LapCount || {}).TotalLaps || Math.max(...Object.values(lines).map((l) => l.NumberOfLaps || 0));
+  const pts = name === "Race" ? RACE_POINTS : SPRINT_POINTS;
+  return Object.keys(lines).sort((a, b) => (+lines[a].Position || 99) - (+lines[b].Position || 99)).map((n) => {
+    const l = lines[n], d = drivers[n] || {}, pos = +l.Position || 0, laps = l.NumberOfLaps || 0;
+    const dnf = !!(l.Retired || (l.Stopped && laps < 0.9 * total)), gap = l.GapToLeader || "";
+    let value = gap;
+    if (pos === 1) value = `${laps} Laps`;
+    else if (dnf) value = "DNF";
+    else if (/L$/.test(gap)) { const k = +gap.replace(/[+L]/g, "") || 0; value = `+${k} Lap${k > 1 ? "s" : ""}`; }
+    const st = (app[n] || {}).Stints || [], got = !dnf && pos > 0 && pos <= pts.length ? pts[pos - 1] : 0;
+    return { pos, number: n, code: d.Tla || n, name: d.FullName || null, team: d.TeamName || null,
+      color: d.TeamColour ? `#${d.TeamColour}` : teamColour(d.TeamName), value, extra: got ? `+${got}` : "", points: got, dnf,
+      tyre: st.length ? st[st.length - 1].Compound : null, self: followed.has(+n) };
+  });
+}
+
+// Standings incl. a race/sprint Jolpica hasn't published yet (= Python _provisional).
+let provCache = null; // promise: concurrent callers share one computation
+function f1Provisional(latest) { return provCache || (provCache = f1ProvisionalCalc(latest)); }
+async function f1ProvisionalCalc(latest) {
+  if (!latest || !["Race", "Sprint"].includes(latest.name) || !latest.rows || latest.rows[0].points == null) return null;
+  const race = (await getJSON(`${JOLPICA}/current/last/results.json`)).MRData.RaceTable.Races[0];
+  if (latest.name === "Race" && race && race.date === latest.date.slice(0, 10)) return null;
+  const lists = (await getJSON(`${JOLPICA}/current/driverStandings.json`)).MRData.StandingsTable.StandingsLists;
+  const byCode = {}, out = {};
+  latest.rows.forEach((r) => { byCode[r.code] = r; });
+  (lists.length ? lists[0].DriverStandings : []).forEach((d) => {
+    const r = byCode[d.Driver.code] || {};
+    out[d.Driver.driverId] = { points: +d.points + (r.points || 0), wins: +d.wins + (latest.name === "Race" && r.pos === 1 ? 1 : 0), base: +d.position };
+  });
+  Object.keys(out).sort((a, b) => out[b].points - out[a].points || out[b].wins - out[a].wins || out[a].base - out[b].base)
+    .forEach((k, i) => { out[k].pos = i + 1; out[k].change = out[k].base - (i + 1); });
+  out._label = `Provisional · incl. ${latest.name.toLowerCase()} ${latest.date.slice(0, 10)}`;
+  return out;
+}
+
+// Latest finished session of the weekend: {name, date, rows} (feed, else OpenF1 for non-races).
+let latestCache = null; // promise, shared like provCache
+function f1LatestSession(followed) { return latestCache || (latestCache = f1LatestSessionCalc(followed)); }
+async function f1LatestSessionCalc(followed) {
+  try {
+    const sessions = await f1Sessions();
+    let fin = sessions.filter((x) => parseDt(x.date_start) <= now() && (f1Status(x) === "final" || parseDt(x.date_end) <= now()));
+    const meeting = fin.length ? fin[fin.length - 1].meeting_key : null;
+    fin = fin.filter((x) => x.meeting_key === meeting);
+    const sx = fin[fin.length - 1];
+    if (!sx) return null;
+    const name = SHORT_NAMES[sx.session_name] || sx.session_name;
+    let rows = null, sub = null;
+    try { rows = await f1FeedRows(name, sx.meeting_name, followed); sub = ["Race", "Sprint"].includes(name) ? "Race · F1 live timing" : "Best laps · F1 live timing"; } catch (e) { /* OpenF1 below */ }
+    if (!rows && name !== "Race" && sx.session_key) {
+      try { rows = await f1SessionRows(sx, followed); sub = "Best laps"; } catch (e) { /* ESPN below */ }
+    }
+    if (rows) return { name, date: sx.date_start, rows, subtitle: `${sub} · ${sx.date_start.slice(0, 10)}` };
+  } catch (e) { /* optional */ }
+  return null;
+}
+
 // Live tower while a session is within -5 min ... +15 min of its schedule; null otherwise.
 async function f1Live(sportCfg) {
   const t = now();
@@ -446,6 +523,7 @@ async function f1Live(sportCfg) {
   const res = await f1LiveSnapshot();
   const info = res.SessionInfo || {};
   if (!info.Name || !Object.keys((res.TimingData || {}).Lines || {}).length) return null;
+  if (["Finished", "Finalised", "Ends"].includes((res.SessionStatus || {}).Status)) return null; // over
   const [rows, part] = f1LiveRows(res, new Set(sportCfg.subjects.map((x) => x.number)));
   const clock = res.ExtrapolatedClock || {}, laps = res.LapCount || {};
   return { session: SHORT_NAMES[info.Name] || info.Name, part: part ? `Q${part}` : null, status: (res.SessionStatus || {}).Status || null,
@@ -453,10 +531,24 @@ async function f1Live(sportCfg) {
     laps: laps.CurrentLap || null, total_laps: laps.TotalLaps || null, flag: TRACK_FLAGS[(res.TrackStatus || {}).Status] || null, rows, as_of: iso(now()) };
 }
 
+// Round of our next event: Jolpica's next.json lags hours after a race, so match the calendar by name.
+async function f1NextRound(nextRace) {
+  let round = nextRace ? +nextRace.round : null;
+  try {
+    await f1Espn();
+    const up = (await f1Sessions()).filter((x) => parseDt(x.date_end) > now() && f1Status(x) !== "final");
+    if (up.length) {
+      const hit = (await getJSON(`${JOLPICA}/current.json`)).MRData.RaceTable.Races.find((r) => r.raceName === up[0].meeting_name);
+      if (hit) round = +hit.round;
+    }
+  } catch (e) { /* keep next.json */ }
+  return round;
+}
+
 async function f1Sport(sportCfg) {
   if (LITE) {
     const nextRace = (await getJSON(`${JOLPICA}/current/next.json`)).MRData.RaceTable.Races[0];
-    return { next_round: nextRace ? +nextRace.round : null };
+    return { next_round: await f1NextRound(nextRace) };
   }
   const followed = new Set(sportCfg.subjects.map((s) => s.jolpica_id));
   const [drivers, raceData, standData, nextData] = await Promise.all([
@@ -484,19 +576,15 @@ async function f1Sport(sportCfg) {
   const nextRace = nextData.MRData.RaceTable.Races[0];
   // Latest finished non-race session of the weekend (= Python _last_session_table): OpenF1 best laps,
   // gaps and tyres when reachable, else ESPN's order (names only, code/team from Jolpica standings).
+  // Latest finished session (= Python _last_session_table): feed classification (gaps, points, tyres)
+  // or OpenF1 best laps; a race already in Jolpica uses the last_race table (with times) instead.
   let lastSession = null;
-  try {
-    const sessions = await f1Sessions();
-    const up = sessions.filter((x) => parseDt(x.date_end) > now());
-    const meeting = (up[0] || sessions[sessions.length - 1] || {}).meeting_key;
-    const fin = sessions.filter((x) => x.meeting_key === meeting && x.session_name !== "Race" && f1Status(x) === "final");
-    const sx = fin[fin.length - 1];
-    if (sx && sx.session_key) {
-      const name = SHORT_NAMES[sx.session_name] || sx.session_name;
-      lastSession = { title: name, subtitle: `Best laps · ${sx.date_start.slice(0, 10)}`,
-        rows: await f1SessionRows(sx, new Set(sportCfg.subjects.map((x) => x.number))) };
-    }
-  } catch (e) { lastSession = null; }
+  const followedNums = new Set(sportCfg.subjects.map((x) => x.number));
+  const latest = await f1LatestSession(followedNums);
+  if (latest && !(latest.name === "Race" && race && race.date === latest.date.slice(0, 10))) {
+    lastSession = { title: latest.name, subtitle: latest.subtitle,
+      rows: latest.rows.map((r) => Object.assign({}, r, { self: followedNums.has(+r.number) })) }; // rows may be cached unflagged
+  }
   const done = lastSession ? [] : Object.entries(espnWk || {}).filter(([, e]) => e.state === "final" && e.date);
   if (done.length) {
     const [name, e] = done.reduce((a, b) => (a[1].date > b[1].date ? a : b));
@@ -513,17 +601,20 @@ async function f1Sport(sportCfg) {
   }
   let live = null;
   try { live = await f1Live(sportCfg); } catch (e) { /* live timing is optional */ }
+  const prov = await f1Provisional(latest).catch(() => null);
   return {
-    next_round: nextRace ? +nextRace.round : null,
+    next_round: await f1NextRound(nextRace),
     live,
     tables: {
       last_session: lastSession, // null -> clients fall back to last_race
       last_race: { title: race.raceName, subtitle: `Round ${race.round} · ${race.date}`,
         rows: race.Results.map((r) => row(+r.position, r.Driver, r.Constructor.name, gap(r), +r.points ? `+${r.points}` : "")) },
-      standings: { title: "Driver standings", subtitle: lists.length ? `After round ${lists[0].round}` : null,
-        rows: (lists.length ? lists[0].DriverStandings : []).map((d) => Object.assign(
-          row(+d.position, d.Driver, d.Constructors[d.Constructors.length - 1].name, String(+d.points), +d.wins ? `${d.wins}W` : ""),
-          { change: f1Change(prev, d.Driver.driverId, +d.position) })) },
+      standings: { title: "Driver standings", subtitle: prov ? prov._label : lists.length ? `After round ${lists[0].round}` : null,
+        rows: (lists.length ? lists[0].DriverStandings : []).map((d) => {
+          const p = prov && prov[d.Driver.driverId]; // latest race not in Jolpica yet: provisional
+          return Object.assign(row(p ? p.pos : +d.position, d.Driver, d.Constructors[d.Constructors.length - 1].name, String(p ? p.points : +d.points),
+            (p ? p.wins : +d.wins) ? `${p ? p.wins : d.wins}W` : ""), { change: p ? p.change : f1Change(prev, d.Driver.driverId, +d.position) });
+        }).sort((a, b) => a.pos - b.pos) },
     },
   };
 }

@@ -109,11 +109,14 @@ export const className = `
     padding: 6px 8px 6px 6px; border-radius: 10px;
   }
   .driver + .driver { margin-top: 5px; }
+  .driver { position: relative; overflow: hidden; }
+  .driver > :not(.tlogo) { position: relative; z-index: 1; }
+  .driver .tlogo { position: absolute; left: 46%; top: 50%; height: 150%; transform: translate(-50%, -50%) rotate(-8deg); opacity: 0.2; pointer-events: none; }
   .driver .plate { /* car number on a slanted team-colour plate */
     width: 36px; height: 30px; display: flex; align-items: center; justify-content: center;
     transform: skewX(-12deg); border-radius: 3px; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.25);
   }
-  .driver .plate span { transform: skewX(12deg); font-size: 20px; color: #fff; }
+  .driver .plate span { transform: skewX(12deg); font-size: 20px; color: #fff; position: relative; z-index: 1; }
   .driver .who { flex: 1; min-width: 0; }
   .driver .code { font-size: 19px; line-height: 1; }
   .driver .meta { font-size: 10px; margin-top: 2px; }
@@ -721,10 +724,21 @@ function Strip({ sessions, nextStart, tz, accent }) {
 }
 
 // Driver row: number plate, code/team, this weekend's session results, last race, standings.
+// Official team emblem (Formula 1's image CDN, loaded at runtime) shown faintly behind the driver row.
+const TEAM_SLUGS = [["ferrari", "ferrari"], ["red bull", "redbullracing"], ["racing bulls", "racingbulls"], ["rb f1", "racingbulls"],
+  ["mercedes", "mercedes"], ["mclaren", "mclaren"], ["aston", "astonmartin"], ["alpine", "alpine"], ["williams", "williams"],
+  ["haas", "haasf1team"], ["audi", "audi"], ["sauber", "audi"], ["cadillac", "cadillac"]];
+function teamLogo(team) {
+  const t = (team || "").toLowerCase();
+  const hit = TEAM_SLUGS.find(([k]) => t.indexOf(k) >= 0 && !(k === "red bull" && t.indexOf("racing bulls") >= 0));
+  return hit ? `https://media.formula1.com/image/upload/c_fit,h_160/q_auto/v1740000000/common/f1/2026/${hit[1]}/2026${hit[1]}logo.webp` : null;
+}
+
 // Live timing from the live job, only while fresh (it stops updating when the session ends).
 function liveF1(sport) {
   const lv = sport.live;
-  return lv && lv.rows && lv.rows.length && Date.now() - Date.parse(lv.as_of) < 3 * 60000 ? lv : null;
+  const over = lv && ["Finished", "Finalised", "Ends"].indexOf(lv.status) >= 0;
+  return lv && !over && lv.rows && lv.rows.length && Date.now() - Date.parse(lv.as_of) < 3 * 60000 ? lv : null;
 }
 
 // "01:23:45" / "00:12:34" -> seconds.
@@ -772,6 +786,7 @@ function Driver({ s, tz, live }) {
   return (
     <div className={`driver ${hot ? "hot" : ""}`}
          style={hot ? null : { background: `linear-gradient(100deg, ${rgba(color, 0.38)}, ${rgba(color, 0.05)} 70%)` }}>
+      {teamLogo(s.team) && <img className="tlogo" src={teamLogo(s.team)} onError={hideBroken} />}
       <div className="plate" style={{ background: color }}><span className="f1x">{s.badge}</span></div>
       <div className="who">
         <div className="code f1x">{s.short}</div>
