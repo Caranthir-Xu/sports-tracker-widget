@@ -279,9 +279,12 @@ Event also has:
   After a session: a session counts as finished once ESPN / the clock says so (during a lockout
   the end times are estimates); when the feed says Finished/Finalised/Ends while a subject still
   shows it live, `refresh_live_sport` adds `refresh_subjects` and the live job runs
-  `refresh_sport_now` (fetch_subject for each subject + fetch_sport) right away. A finished session
-  clears `live` (clients also ignore a live block whose status is Finished/Finalised/Ends), so the
-  drivers show LATEST again. `next_round` comes from the calendar (`current.json`, matched by the
+  `refresh_sport_now` (fetch_subject for each subject + fetch_sport) right away. Tower lifetime:
+  while any F1 subject's next session is "live" the tower never disappears (the live job keeps
+  polling past the scheduled window for overruns; clients ignore the 10-min age limit and show
+  "⟳ Nm ago"). When the session ends it shows the final classification (`live.final`, rows from
+  `_feed_session_rows`, "FINAL" header) only until the subjects roll over (LATEST has the result),
+  then the live job clears it. Clients ignore a non-final live block with status Finished/Finalised/Ends. `next_round` comes from the calendar (`current.json`, matched by the
   next event's meeting name): Jolpica's next.json still names the old round for hours after a race. A finished race
   makes `last_session` the race classification until Jolpica publishes it (hours later), then the
   Jolpica last_race table (with times) takes over. `last_session` sources, in order: the live-timing
@@ -294,13 +297,17 @@ Event also has:
   re-sorted (points, wins); `change` = Jolpica position − provisional position. Used by the ranking
   (`provisional: true`) and the standings table (subtitle "Provisional · incl. race <date>").
   iOS shares the in-flight promise (`f1LatestSession`, `f1Provisional`) so concurrent callers in one
-  run don't get an empty placeholder. Widget `liveF1` uses it only if as_of < 3 min old: `LiveTower` (open, red dot, clock via
+  run don't get an empty placeholder. Widget `liveF1` uses it only if as_of < 10 min old (network
+  blips skip ticks; the header shows an amber "⟳ Nm ago" once it is over 1 min old): `LiveTower` (open, red dot, clock via
   LiveClock, PIT tag, out rows dimmed) above the session tables, and the driver's stat shows LIVE P#
   + best lap. iOS: `f1Live()` in Sports Data.js (full runs = detail page only; widgets refresh too
   rarely) builds the same `live`; the detail page shows `f1LiveHTML` + LIVE stats. It doesn't
   auto-update: reopen the detail page for a new snapshot. The feed's AWS load balancer is sticky:
   `f1LiveSnapshot` sends the negotiate response's AWSALB/AWSALBCORS cookies back by hand (Scriptable
   `response.cookies`), otherwise later calls get "No Connection with that ID".
+  Feed requests use short timeouts (8 s, poll 12 s; iOS 10 s): launchd never overlaps runs of the
+  live job, so one hung tick used to freeze the tower for minutes. Jolpica drivers without a `code`
+  (new / reserve) fall back to the surname's first 3 letters (a KeyError used to break the F1 tables).
 - NHL live mode: `fetch.py --live` calls providers' optional `refresh_live(cfg, subject)`.
   NHL polls `gamecenter/{id}/landing` only if the next game is live or within −15 min…+5 h of
   its start (otherwise no request); updates score, `live`, `detail` (goals so far). When the

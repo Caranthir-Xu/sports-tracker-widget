@@ -403,7 +403,7 @@ async function f1LiveSnapshotFresh() {
     r.method = method;
     if (body != null) r.body = body;
     r.headers = cookie ? { Cookie: cookie } : {};
-    r.timeoutInterval = 15;
+    r.timeoutInterval = 10; // fail fast; reopening the page retries
     const text = await r.loadString();
     if (!cookie) {
       const resp = r.response || {}, list = (resp.cookies || []).filter((c) => /^AWSALB/.test(c.name));
@@ -518,13 +518,20 @@ async function f1LatestSessionCalc(followed) {
 // Live tower while a session is within -5 min ... +15 min of its schedule; null otherwise.
 async function f1Live(sportCfg) {
   const t = now();
-  const s = (await f1Sessions()).find((x) => parseDt(x.date_start) - 5 * 60000 <= t && t <= parseDt(x.date_end) + 15 * 60000);
+  // Window around the schedule, or a session ESPN still reports in progress (overruns).
+  const s = (await f1Sessions()).find((x) => (parseDt(x.date_start) - 5 * 60000 <= t && t <= parseDt(x.date_end) + 15 * 60000)
+    || (parseDt(x.date_start) <= t && f1Status(x) === "live"));
   if (!s) return null;
   const res = await f1LiveSnapshot();
   const info = res.SessionInfo || {};
   if (!info.Name || !Object.keys((res.TimingData || {}).Lines || {}).length) return null;
-  if (["Finished", "Finalised", "Ends"].includes((res.SessionStatus || {}).Status)) return null; // over
-  const [rows, part] = f1LiveRows(res, new Set(sportCfg.subjects.map((x) => x.number)));
+  const followed = new Set(sportCfg.subjects.map((x) => x.number));
+  const [rows, part] = f1LiveRows(res, followed);
+  if (["Finished", "Finalised", "Ends"].includes((res.SessionStatus || {}).Status)) { // over: final classification
+    const name = SHORT_NAMES[info.Name] || info.Name, laps = res.LapCount || {};
+    return { session: name, part: part ? `Q${part}` : null, status: (res.SessionStatus || {}).Status, final: true,
+      laps: laps.CurrentLap || null, total_laps: laps.TotalLaps || null, rows: (await f1FeedRows(name, null, followed)) || rows, as_of: iso(now()) };
+  }
   const clock = res.ExtrapolatedClock || {}, laps = res.LapCount || {};
   return { session: SHORT_NAMES[info.Name] || info.Name, part: part ? `Q${part}` : null, status: (res.SessionStatus || {}).Status || null,
     remaining: clock.Remaining || null, clock_utc: clock.Utc || null, running: !!clock.Extrapolating,
@@ -560,7 +567,8 @@ async function f1Sport(sportCfg) {
   const colours = {};
   drivers.forEach((d) => { if (d.team_colour) colours[d.name_acronym] = `#${d.team_colour}`; });
   const row = (pos, d, team, value, extra) => ({
-    pos, code: d.code, name: `${d.givenName} ${d.familyName}`, team, color: colours[d.code] || teamColour(team),
+    pos, code: d.code || d.familyName.slice(0, 3).toUpperCase(), name: `${d.givenName} ${d.familyName}`, team, // no code: new/reserve driver
+    color: colours[d.code] || teamColour(team),
     value, extra, self: followed.has(d.driverId),
   });
   const race = raceData.MRData.RaceTable.Races[0];

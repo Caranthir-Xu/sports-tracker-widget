@@ -598,8 +598,10 @@ def fetch_sport(sport_cfg):
     colours = _team_colours()
 
     def row(pos, d, team, value, extra):
-        return {"pos": pos, "code": d["code"], "name": f"{d['givenName']} {d['familyName']}",
-                "team": team, "color": colours.get(d["code"]) or _team_colour(team), "value": value, "extra": extra,
+        # New / reserve drivers can lack a code in Jolpica: fall back to the surname's first letters.
+        code = d.get("code") or d["familyName"][:3].upper()
+        return {"pos": pos, "code": code, "name": f"{d['givenName']} {d['familyName']}",
+                "team": team, "color": colours.get(code) or _team_colour(team), "value": value, "extra": extra,
                 "self": d["driverId"] in followed}
 
     race = get_json(f"{JOLPICA}/current/last/results.json")["MRData"]["RaceTable"]["Races"][0]
@@ -678,13 +680,15 @@ LIVE_BEFORE, LIVE_AFTER = timedelta(minutes=5), timedelta(minutes=15)
 def _live_snapshot():
     from curl_cffi import requests  # same dependency as the badminton provider
     s = requests.Session(impersonate="chrome")
-    tok = s.post(f"{LIVE_FEED}/negotiate?negotiateVersion=1", timeout=15).json()["connectionToken"]
-    s.post(f"{LIVE_FEED}?id={tok}", data='{"protocol":"json","version":1}\x1e', timeout=15)
-    s.get(f"{LIVE_FEED}?id={tok}", timeout=15)  # handshake ack
-    s.post(f"{LIVE_FEED}?id={tok}", timeout=15, data=json.dumps(
+    # Short timeouts: a stuck tick blocks the next ones (launchd never overlaps runs), so fail fast
+    # and let the next tick (20 s later) retry. The live tower survives a few missed ticks.
+    tok = s.post(f"{LIVE_FEED}/negotiate?negotiateVersion=1", timeout=8).json()["connectionToken"]
+    s.post(f"{LIVE_FEED}?id={tok}", data='{"protocol":"json","version":1}\x1e', timeout=8)
+    s.get(f"{LIVE_FEED}?id={tok}", timeout=8)  # handshake ack
+    s.post(f"{LIVE_FEED}?id={tok}", timeout=8, data=json.dumps(
         {"type": 1, "target": "Subscribe", "arguments": [LIVE_TOPICS], "invocationId": "0"}) + "\x1e")
     for _ in range(4):
-        for part in s.get(f"{LIVE_FEED}?id={tok}", timeout=30).text.split("\x1e"):
+        for part in s.get(f"{LIVE_FEED}?id={tok}", timeout=12).text.split("\x1e"):
             if part.strip():
                 msg = json.loads(part)
                 if msg.get("type") == 3 and msg.get("invocationId") == "0":
@@ -748,10 +752,13 @@ def _live_rows(res, followed):
 
 
 def refresh_live_sport(sport_cfg, entry):
-    """Live timing tower for the F1 sport entry while a session is on: {"live": {...}};
-    {"live": None} once it is over (to clear it); None when there is nothing to change."""
+    """Live timing tower for the F1 sport entry while a session is on: {"live": {...}}. Once it is
+    over the tower shows the final classification (`final: True`) until the subjects have rolled
+    over (LATEST shows the result), then {"live": None}. None when there is nothing to change."""
     s = _live_window()
-    if not s:
+    # Also poll while a subject still shows a session live (races can overrun the scheduled end).
+    on = any((x.get("next") or {}).get("status") == "live" for x in entry.get("subjects") or [])
+    if not s and not on:
         return {"live": None} if entry.get("live") else None
     res = _live_snapshot()
     over = (res.get("SessionStatus") or {}).get("Status") in ("Finished", "Finalised", "Ends")
@@ -761,10 +768,18 @@ def refresh_live_sport(sport_cfg, entry):
     info, status = res.get("SessionInfo") or {}, (res.get("SessionStatus") or {}).get("Status")
     if not info or not (res.get("TimingData") or {}).get("Lines"):
         return None
-    if over:  # finished: drop the tower so LATEST / the result tables show again
-        return dict({"live": None} if entry.get("live") else {}, **({"refresh_subjects": True} if stale else {})) or None
-    rows, part = _live_rows(res, {s_["number"] for s_ in sport_cfg["subjects"]})
+    followed = {s_["number"] for s_ in sport_cfg["subjects"]}
+    rows, part = _live_rows(res, followed)
     name = SHORT_NAMES.get(info.get("Name"), info.get("Name"))
+    if over and not stale:  # LATEST has the result now: close the tower
+        return {"live": None} if entry.get("live") else None
+    if over:  # until the subjects roll over, show the final classification (race: gaps + points)
+        final = _feed_session_rows(name, None, followed) or rows
+        return dict({"live": {"session": name, "part": f"Q{part}" if part else None, "status": status, "final": True,
+                              "laps": (res.get("LapCount") or {}).get("CurrentLap"),
+                              "total_laps": (res.get("LapCount") or {}).get("TotalLaps"),
+                              "rows": final, "as_of": iso(now_utc())}},
+                    **({"refresh_subjects": True} if stale else {}))
     clock = res.get("ExtrapolatedClock") or {}
     return {"live": {
         "session": name, "part": f"Q{part}" if part else None, "status": status,

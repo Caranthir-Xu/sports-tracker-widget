@@ -151,6 +151,8 @@ export const className = `
   .f1t-r .v { text-align: right; white-space: nowrap; font-family: "SF Mono", Menlo, monospace; font-size: 9.5px; }
   .f1t-r .cg { width: 22px; text-align: right; }
   .f1t.live { display: block; }
+  .f1t.live .f1t-h .fin { font-size: 9px; padding: 1px 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.85); color: #111; font-style: normal; vertical-align: 1px; }
+  .f1t.live .f1t-h .age { margin-left: auto; margin-right: 8px; font-size: 9px; color: #ffb340; }
   .f1t.live .flag { margin-left: 6px; padding: 1px 6px; border-radius: 3px; font-size: 9px; font-style: normal; letter-spacing: 0.04em; vertical-align: 1px; animation: f1flag 1.2s ease-in-out infinite; }
   .f1t.live .flag.yel { background: #ffd400; color: #111; }
   .f1t.live .flag.red { background: #ff2a1f; color: #fff; }
@@ -737,8 +739,14 @@ function teamLogo(team) {
 // Live timing from the live job, only while fresh (it stops updating when the session ends).
 function liveF1(sport) {
   const lv = sport.live;
-  const over = lv && ["Finished", "Finalised", "Ends"].indexOf(lv.status) >= 0;
-  return lv && !over && lv.rows && lv.rows.length && Date.now() - Date.parse(lv.as_of) < 3 * 60000 ? lv : null;
+  if (!lv || !lv.rows || !lv.rows.length) return null;
+  const age = Date.now() - Date.parse(lv.as_of);
+  // While a driver's session is on, never drop the tower (missed updates just show their age);
+  // the final classification shows only until LATEST has the result.
+  const on = sport.subjects.some((x) => x.next && x.next.status === "live");
+  if (lv.final) return on ? lv : null;
+  const over = ["Finished", "Finalised", "Ends"].indexOf(lv.status) >= 0;
+  return !over && (on || age < 10 * 60000) ? lv : null;
 }
 
 // "01:23:45" / "00:12:34" -> seconds.
@@ -751,9 +759,10 @@ function LiveTower({ live }) {
   return (
     <div className="f1t open live">
       <div className="f1t-h">
-        <b className="f1x"><span className="dot" /> {live.session}{live.part ? ` · ${live.part}` : ""}
+        <b className="f1x">{live.final ? <span className="fin">FINAL</span> : <span className="dot" />} {live.session}{live.part ? ` · ${live.part}` : ""}
           {live.flag && <span className={`flag ${live.flag === "RED FLAG" ? "red" : "yel"}`}>{live.flag}</span>}</b>
-        <span>{racing && live.laps ? `Lap ${live.laps}${live.total_laps ? "/" + live.total_laps : ""}` : live.remaining
+        {!live.final && Date.now() - Date.parse(live.as_of) > 60000 && <span className="age">⟳ {Math.round((Date.now() - Date.parse(live.as_of)) / 60000)}m ago</span>}
+        <span>{live.final ? (racing && live.laps ? `${live.laps} laps` : "") : racing && live.laps ? `Lap ${live.laps}${live.total_laps ? "/" + live.total_laps : ""}` : live.remaining
           ? <LiveClock lv={{ seconds: hms(live.remaining), as_of: live.clock_utc, running: live.running }} /> : live.status}</span>
       </div>
       <div className="f1t-body">
@@ -782,7 +791,7 @@ function Driver({ s, tz, live }) {
   const weekend = ((s.next && s.next.sessions) || []).filter((x) => x.result);
   // Latest finished session this weekend (practice/quali/sprint/race), else the last race.
   const latest = weekend.length ? weekend[weekend.length - 1] : null;
-  const me = live && live.rows.find((x) => x.code === s.short); // live position overrides
+  const me = live && !live.final && live.rows.find((x) => x.code === s.short); // live position overrides
   return (
     <div className={`driver ${hot ? "hot" : ""}`}
          style={hot ? null : { background: `linear-gradient(100deg, ${rgba(color, 0.38)}, ${rgba(color, 0.05)} 70%)` }}>
