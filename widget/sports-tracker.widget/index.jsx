@@ -359,7 +359,7 @@ export const className = `
   .nst-r .nm, .nst-cols .nm { flex: 1; min-width: 0; color: rgba(255, 255, 255, 0.55); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .nst-r.me .nm { color: #fff; }
   .nst-r .gp, .nst-cols .gp { width: 18px; text-align: right; color: rgba(255, 255, 255, 0.5); }
-  .nst-r .rec, .nst-cols .rec { width: 42px; text-align: right; color: rgba(255, 255, 255, 0.6); }
+  .nst-r .rec, .nst-cols .rec { width: 52px; flex: none; text-align: right; white-space: nowrap; color: rgba(255, 255, 255, 0.6); }
   .nst-r .pt, .nst-cols .pt { width: 20px; text-align: right; font-weight: 700; }
   .nst-cols .ab { width: 46px; }
   .nst.bwf .nst-r img.flag { width: 16px; height: 11px; border-radius: 2px; object-fit: cover; }

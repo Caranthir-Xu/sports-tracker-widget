@@ -1039,7 +1039,7 @@ function detailHTML(data, focus) {
   .nstr{display:flex;align-items:center;gap:7px;height:26px;padding:0 7px;border-radius:7px;font-size:13px}.nstr img{width:20px;height:20px;object-fit:contain}
   .nstr.me{background:rgba(95,211,218,.16);box-shadow:inset 3px 0 0 #5fd3da;font-weight:700}.nstr.cut{box-shadow:0 1px 0 rgba(255,69,58,.6);margin-bottom:2px}.nstr.me.cut{box-shadow:inset 3px 0 0 #5fd3da,0 1px 0 rgba(255,69,58,.6)}
   .nstr .p,.nstc .p{width:16px;text-align:right;color:rgba(255,255,255,.5)}.nstr .ab{width:34px;font-weight:700}.nstr .nm,.nstc .nm{flex:1;min-width:0;color:rgba(255,255,255,.55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .nstr .gpn,.nstc .gpn{width:22px;text-align:right;color:rgba(255,255,255,.5)}.nstr .rec,.nstc .rec{width:50px;text-align:right;color:rgba(255,255,255,.6)}.nstr .pt,.nstc .pt{width:26px;text-align:right;font-weight:700}
+  .nstr .gpn,.nstc .gpn{width:22px;text-align:right;color:rgba(255,255,255,.5)}.nstr .rec,.nstc .rec{width:62px;flex:none;text-align:right;white-space:nowrap;color:rgba(255,255,255,.6)}.nstr .pt,.nstc .pt{width:26px;text-align:right;font-weight:700}
   .stale{margin-top:6px;font-size:11px;color:#ffb340}.foot{text-align:center;font-size:11px;color:rgba(255,255,255,.35)}`;
   const order = data.sports.slice().sort((a, b) => (a.id === focus ? -1 : b.id === focus ? 1 : 0));
   const body = order.map((sp) => (sp.id === "f1" ? f1HTML(sp) : sp.id === "nhl" ? nhlHTML(sp) : h2hHTML(sp))).join("");
