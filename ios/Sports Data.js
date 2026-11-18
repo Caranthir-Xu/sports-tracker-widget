@@ -1126,7 +1126,10 @@ async function badmintonSubject(subj) {
   const lastM = done[done.length - 1] || null;
   const [ranking, next, last] = await Promise.all([
     bwfRanking(subj),
-    pending.length ? matchEvent(pending[0], pid, subj.event) : nextTournament(subj, lastM ? lastM.tournament_model.id : null),
+    // No drawn match: next entered tournament. Skip the last match's tournament only after a loss
+    // (after a win the player is still in it: next round + path).
+    pending.length ? matchEvent(pending[0], pid, subj.event)
+      : nextTournament(subj, lastM && lastM.winner !== (playersOf(lastM, 1).some((p) => p.id === pid) ? 1 : 2) ? lastM.tournament_model.id : null),
     lastM ? matchEvent(lastM, pid, subj.event) : null,
   ]);
   const me = lastM ? (playersOf(lastM, 1).some((p) => p.id === pid) ? 1 : 2) : null;

@@ -376,8 +376,12 @@ def fetch_subject(subj):
     if pending:
         nxt = _match_event(pending[0], pid)
     else:
-        # No drawn match yet: show the next tournament the player entered.
-        exclude = last_m["tournament_model"]["id"] if last_m else None
+        # No drawn match yet: show the next tournament the player entered. Skip the last match's
+        # tournament only if they lost it (after a win they're still in it: next round + path).
+        side = 1 if last_m and pid in ((last_m["t1p1_player_model"] or {}).get("id"),
+                                       (last_m["t1p2_player_model"] or {}).get("id")) else 2
+        lost = bool(last_m) and last_m.get("winner") != side
+        exclude = last_m["tournament_model"]["id"] if lost else None
         nxt = _next_tournament(subj, exclude)
 
     me = 1 if last_m and pid in ((last_m["t1p1_player_model"] or {}).get("id"),

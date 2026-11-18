@@ -172,6 +172,8 @@ Event also has:
 - F1 `next` = next session (FP/Sprint/Quali/Race); `sessions` lists the whole weekend with per-session results.
   F1 `last` = the latest Grand Prix **race** (not sprint, not the latest session).
 - Badminton `next` = next drawn match, else the next World Tour tournament the player is entered in (`subtitle: null`), else null.
+  The last match's tournament is skipped only if the player lost that match; after a win they are
+  still in it, so it stays as `next` (path from the next round; exact time once the order of play is out).
   For an entered tournament (from the day before it starts), `_scheduled_match` / iOS `scheduledMatch`
   scans its published day schedules (`tournaments/day-matches`, one per day until an unpublished
   day) for the player and returns that match with the exact `matchTimeUtc`, round, opponent and
